@@ -1,3 +1,10 @@
-com.goquiz.adventure:style/AppTheme = 0x7f030000
+com.goquiz.adventure:raw/click = 0x7f030000
 com.goquiz.adventure:mipmap/ic_launcher = 0x7f020000
-com.goquiz.adventure:drawable/ic_launcher = 0x7f010000
+com.goquiz.adventure:drawable/progress_fantasy = 0x7f010003
+com.goquiz.adventure:drawable/ic_launcher = 0x7f010002
+com.goquiz.adventure:drawable/card_panel = 0x7f010001
+com.goquiz.adventure:raw/damage = 0x7f030001
+com.goquiz.adventure:drawable/quiz_adventure_background = 0x7f010004
+com.goquiz.adventure:style/AppTheme = 0x7f040000
+com.goquiz.adventure:raw/menu_theme = 0x7f030002
+com.goquiz.adventure:drawable/btn_fantasy = 0x7f010000

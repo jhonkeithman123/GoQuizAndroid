@@ -1,5 +1,12 @@
 R_DEF: Internal format may change without notice
 local
+drawable btn_fantasy
+drawable card_panel
 drawable ic_launcher
+drawable progress_fantasy
+drawable quiz_adventure_background
 mipmap ic_launcher
+raw click
+raw damage
+raw menu_theme
 style AppTheme

@@ -11,3 +11,4 @@ captures/
 .cxx/
 *.class
 apks/
+app/build/outputs/

@@ -64,19 +64,22 @@ GoQuizAndroidRebuilt/
 │   ├── build.gradle                   # App module build configuration, SDK versions & tasks
 │   └── src/
 │       └── main/
-│           ├── AndroidManifest.xml    # App manifest (permissions, main activity, theme)
+│           ├── AndroidManifest.xml    # App manifest (permissions, main activity, theme, launcher icons)
 │           ├── assets/
 │           │   ├── questions.json     # 5-level question bank for HTML, CSS, JS, and Java
-│           │   ├── images/GoQuiz.ico  # Bundled Windows icon asset
+│           │   ├── images/            # Packaged icon & wallpaper assets
+│           │   │   ├── GoQuiz.ico
+│           │   │   └── quiz_adventure_background.png
 │           │   └── sounds/            # Packaged audio assets
 │           │       ├── click.wav      # Button tap audio feedback
 │           │       ├── damage.wav     # Heart loss sound on wrong answer
 │           │       └── menu_theme.wav # Background soundtrack
 │           ├── java/com/goquiz/adventure/
-│           │   ├── MainActivity.java  # Core game logic, UI screens, audio engine, leaderboard
+│           │   ├── MainActivity.java  # Full Android game (all desktop screens, difficulty engine, audio, UI)
 │           │   └── QuizServer.java    # Embedded leaderboard server (can host directly on Android)
 │           └── res/
-│               ├── drawable/          # Launcher drawables
+│               ├── drawable/          # UI drawables (card_panel, btn_fantasy, progress_fantasy, ic_launcher)
+│               ├── drawable-nodpi/    # HD fantasy wallpaper background (quiz_adventure_background.png)
 │               ├── mipmap-*/          # Scaled app launcher icons (MDPI to XXXHDPI)
 │               └── values/styles.xml  # App theme, accent colors, and status bar styles
 ├── desktop/                           # Desktop Java Swing edition (for PC players)
@@ -88,7 +91,9 @@ GoQuizAndroidRebuilt/
 │   ├── QuizServer.java                # Pure Java socket server (port 5050)
 │   ├── run-server.bat                 # 1-Click launcher to run QuizServer on PC
 │   └── online_leaderboard.properties  # Stored student rankings
-├── images/GoQuiz.ico                  # Master app icon source file
+├── images/                            # Master artwork and icon sources
+│   ├── GoQuiz.ico                     # Master app icon source file
+│   └── quiz_adventure_background.png  # Master fantasy wallpaper
 ├── sounds/                            # Master game audio files
 ├── gradle/wrapper/                    # Gradle wrapper binaries & distribution configuration
 │   ├── gradle-wrapper.jar
