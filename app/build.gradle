@@ -1,0 +1,43 @@
+plugins { id 'com.android.application' }
+
+android { 
+    namespace 'com.goquiz.adventure'
+    compileSdk 35
+
+    defaultConfig { 
+        applicationId 'com.goquiz.adventure'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '1.0' 
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+tasks.register('exportApks') {
+    description = 'Copies compiled APKs to root /apks folder for quick access'
+    dependsOn 'assembleDebug', 'assembleRelease'
+    doLast {
+        def dest = file("${rootDir}/apks")
+        dest.mkdirs()
+        copy {
+            from "${layout.buildDirectory.get().asFile}/outputs/apk/debug/app-debug.apk"
+            into dest
+        }
+        copy {
+            from "${layout.buildDirectory.get().asFile}/outputs/apk/release/app-release.apk"
+            into dest
+        }
+    }
+}

@@ -1,0 +1,3 @@
+com.goquiz.adventure:style/AppTheme = 0x7f030000
+com.goquiz.adventure:mipmap/ic_launcher = 0x7f020000
+com.goquiz.adventure:drawable/ic_launcher = 0x7f010000

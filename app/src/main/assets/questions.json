@@ -1,0 +1,1050 @@
+{
+  "HTML": [
+    [
+      {
+        "q": "What does HTML stand for?",
+        "choices": [
+          "HyperText Markup Language",
+          "HighText Machine Language",
+          "Hyperlink Text Management Language",
+          "Home Tool Markup Language"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which tag creates the largest heading?",
+        "choices": [
+          "<h6>",
+          "<head>",
+          "<h1>",
+          "<heading>"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which tag creates a paragraph?",
+        "choices": [
+          "<p>",
+          "<para>",
+          "<text>",
+          "<pg>"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which tag creates a hyperlink?",
+        "choices": [
+          "<link>",
+          "<a>",
+          "<href>",
+          "<url>"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which tag displays an image?",
+        "choices": [
+          "<picture>",
+          "<src>",
+          "<image>",
+          "<img>"
+        ],
+        "answer": 3
+      }
+    ],
+    [
+      {
+        "q": "Which attribute provides alternative text for an image?",
+        "choices": [
+          "title",
+          "alt",
+          "src",
+          "text"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which element is used for an unordered list?",
+        "choices": [
+          "<ol>",
+          "<li>",
+          "<ul>",
+          "<list>"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which element contains metadata and the page title?",
+        "choices": [
+          "<body>",
+          "<main>",
+          "<head>",
+          "<meta-body>"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which input type creates a checkbox?",
+        "choices": [
+          "check",
+          "box",
+          "checkbox",
+          "tick"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which HTML element represents a table row?",
+        "choices": [
+          "<td>",
+          "<tr>",
+          "<th>",
+          "<row>"
+        ],
+        "answer": 1
+      }
+    ],
+    [
+      {
+        "q": "Which semantic element is intended for the main content of a page?",
+        "choices": [
+          "<section>",
+          "<main>",
+          "<content>",
+          "<center>"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which attribute connects a label to an input?",
+        "choices": [
+          "for",
+          "connect",
+          "target",
+          "label-for"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which element is commonly used for navigation links?",
+        "choices": [
+          "<nav>",
+          "<navigate>",
+          "<links>",
+          "<menu-nav>"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which attribute opens a link in a new browsing context?",
+        "choices": [
+          "new",
+          "open",
+          "target=\"_blank\"",
+          "window=\"new\""
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which element is used to embed another webpage?",
+        "choices": [
+          "<framepage>",
+          "<iframe>",
+          "<embedpage>",
+          "<webframe>"
+        ],
+        "answer": 1
+      }
+    ],
+    [
+      {
+        "q": "What does the HTML <fieldset> element primarily do?",
+        "choices": [
+          "Adds animation",
+          "Groups related form controls",
+          "Creates a database",
+          "Formats images"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which attribute makes a form control mandatory?",
+        "choices": [
+          "required",
+          "needed",
+          "validate",
+          "must"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which element provides a caption for a <figure>?",
+        "choices": [
+          "<caption>",
+          "<figcaption>",
+          "<figure-title>",
+          "<label>"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which attribute is used to associate a form with controls outside the form?",
+        "choices": [
+          "id",
+          "for",
+          "form",
+          "action"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which element is designed for a self-contained composition such as a blog post?",
+        "choices": [
+          "<article>",
+          "<aside>",
+          "<object>",
+          "<compose>"
+        ],
+        "answer": 0
+      }
+    ],
+    [
+      {
+        "q": "Which HTML feature lets JavaScript receive custom data from an element?",
+        "choices": [
+          "data-* attributes",
+          "custom-* tags",
+          "meta-data tags only",
+          "script-data only"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "What is the purpose of the <template> element?",
+        "choices": [
+          "Run JavaScript",
+          "Store inert markup for later cloning/use",
+          "Create CSS variables",
+          "Connect to SQL"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which element can provide alternative media sources?",
+        "choices": [
+          "<fallback>",
+          "<source>",
+          "<media-fallback>",
+          "<option>"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which statement about semantic HTML is best?",
+        "choices": [
+          "It only changes colors",
+          "It gives elements meaningful structural meaning",
+          "It replaces JavaScript",
+          "It prevents all CSS"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which element is appropriate for content indirectly related to the main content?",
+        "choices": [
+          "<aside>",
+          "<extra>",
+          "<side-content>",
+          "<secondary>"
+        ],
+        "answer": 0
+      }
+    ]
+  ],
+  "CSS": [
+    [
+      {
+        "q": "What does CSS stand for?",
+        "choices": [
+          "Cascading Style Sheets",
+          "Computer Style Syntax",
+          "Creative Styling System",
+          "Coded Style Sheets"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which property changes text color?",
+        "choices": [
+          "font-color",
+          "text-color",
+          "color",
+          "foreground"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which symbol starts a class selector?",
+        "choices": [
+          "#",
+          ".",
+          "@",
+          ":"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which symbol starts an ID selector?",
+        "choices": [
+          ".",
+          "&",
+          "#",
+          "@"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which property changes the background color?",
+        "choices": [
+          "background-color",
+          "bg-color",
+          "color-background",
+          "back-color"
+        ],
+        "answer": 0
+      }
+    ],
+    [
+      {
+        "q": "Which property changes the size of text?",
+        "choices": [
+          "text-size",
+          "font-size",
+          "size",
+          "font-height"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which declaration makes text bold?",
+        "choices": [
+          "font-weight: bold",
+          "text-style: bold",
+          "font: strong",
+          "weight: bold"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which property adds space inside an element's border?",
+        "choices": [
+          "margin",
+          "padding",
+          "spacing",
+          "inside-space"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which property adds space outside an element?",
+        "choices": [
+          "padding",
+          "margin",
+          "border-space",
+          "outside"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which property controls an element's border?",
+        "choices": [
+          "outline-style",
+          "edge",
+          "border",
+          "box-edge"
+        ],
+        "answer": 2
+      }
+    ],
+    [
+      {
+        "q": "Which display value enables Flexbox layout?",
+        "choices": [
+          "display: flex",
+          "position: flex",
+          "layout: flex",
+          "flex: display"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which Flexbox property controls alignment along the main axis?",
+        "choices": [
+          "align-items",
+          "justify-content",
+          "place-items",
+          "main-align"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which property changes the order of flex items?",
+        "choices": [
+          "item-order",
+          "flex-order",
+          "order",
+          "sequence"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which position value keeps an element fixed to the viewport?",
+        "choices": [
+          "absolute",
+          "sticky",
+          "fixed",
+          "locked"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which unit is relative to the root element's font size?",
+        "choices": [
+          "em",
+          "rem",
+          "%",
+          "vh"
+        ],
+        "answer": 1
+      }
+    ],
+    [
+      {
+        "q": "What does box-sizing: border-box do?",
+        "choices": [
+          "Includes padding and border in the declared width/height",
+          "Removes borders",
+          "Makes a box circular",
+          "Disables padding"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which pseudo-class applies when the pointer is over an element?",
+        "choices": [
+          ":active",
+          ":hover",
+          ":focus",
+          ":pointer"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which selector targets direct children?",
+        "choices": [
+          "A + B",
+          "A ~ B",
+          "A > B",
+          "A :: B"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which rule can define reusable CSS custom properties?",
+        "choices": [
+          "@variable",
+          ":root with --name",
+          "@custom",
+          "var{} only"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which function reads a CSS custom property?",
+        "choices": [
+          "value()",
+          "get()",
+          "var()",
+          "custom()"
+        ],
+        "answer": 2
+      }
+    ],
+    [
+      {
+        "q": "What is the main purpose of CSS Grid?",
+        "choices": [
+          "Two-dimensional layout",
+          "Database storage",
+          "JavaScript execution",
+          "Image compression"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which Grid property defines columns?",
+        "choices": [
+          "grid-columns",
+          "grid-template-columns",
+          "columns-grid",
+          "template-columns-grid"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "What does the cascade help determine?",
+        "choices": [
+          "Which applicable CSS declaration wins",
+          "How images load",
+          "How HTML is parsed into Java",
+          "How servers route requests"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which at-rule is commonly used for responsive design breakpoints?",
+        "choices": [
+          "@responsive",
+          "@screen",
+          "@media",
+          "@breakpoint"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which selector has higher specificity?",
+        "choices": [
+          "A type selector",
+          "A class selector",
+          "An ID selector",
+          "A universal selector"
+        ],
+        "answer": 2
+      }
+    ]
+  ],
+  "JavaScript": [
+    [
+      {
+        "q": "Which keyword declares a block-scoped variable that can be reassigned?",
+        "choices": [
+          "let",
+          "varx",
+          "const",
+          "define"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which keyword declares a constant binding?",
+        "choices": [
+          "fixed",
+          "const",
+          "constant",
+          "static"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which symbol is commonly used for strict equality?",
+        "choices": [
+          "==",
+          "=",
+          "===",
+          "!="
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which method writes a message to the browser console?",
+        "choices": [
+          "console.log()",
+          "print.console()",
+          "log.console()",
+          "browser.write()"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which value represents an intentional absence of a value?",
+        "choices": [
+          "empty",
+          "none",
+          "null",
+          "void-value"
+        ],
+        "answer": 2
+      }
+    ],
+    [
+      {
+        "q": "Which method adds an item to the end of an array?",
+        "choices": [
+          "push()",
+          "append()",
+          "addEnd()",
+          "insertLast()"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which method removes the last array item?",
+        "choices": [
+          "remove()",
+          "pop()",
+          "deleteLast()",
+          "pull()"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which operator is used for logical AND?",
+        "choices": [
+          "||",
+          "&&",
+          "and",
+          "&|"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which function converts a JSON string into a JavaScript value?",
+        "choices": [
+          "JSON.toObject()",
+          "JSON.parse()",
+          "JSON.read()",
+          "parse.JSON()"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "What is the result type of typeof 42?",
+        "choices": [
+          "number",
+          "integer",
+          "float",
+          "numeric"
+        ],
+        "answer": 0
+      }
+    ],
+    [
+      {
+        "q": "Which method creates a new array by transforming every item?",
+        "choices": [
+          "filter()",
+          "map()",
+          "reduceToArray()",
+          "transformAll()"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which method returns a new array containing items that pass a test?",
+        "choices": [
+          "map()",
+          "select()",
+          "filter()",
+          "where()"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which keyword refers to the current object context in a normal method?",
+        "choices": [
+          "self",
+          "this",
+          "current",
+          "object"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which DOM method selects the first element matching a CSS selector?",
+        "choices": [
+          "getElementBySelector()",
+          "querySelector()",
+          "selectFirst()",
+          "findCSS()"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which event usually fires when a button is clicked?",
+        "choices": [
+          "press",
+          "tap",
+          "click",
+          "button"
+        ],
+        "answer": 2
+      }
+    ],
+    [
+      {
+        "q": "What does an async function return?",
+        "choices": [
+          "Always a string",
+          "A Promise",
+          "A callback only",
+          "A generator"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which keyword waits for a Promise inside an async function?",
+        "choices": [
+          "wait",
+          "await",
+          "pause",
+          "defer"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "What does Array.prototype.reduce() commonly do?",
+        "choices": [
+          "Builds a single accumulated result",
+          "Sorts CSS",
+          "Creates DOM nodes only",
+          "Stops loops"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "What is a closure?",
+        "choices": [
+          "A CSS rule",
+          "A function retaining access to its lexical environment",
+          "A closed browser tab",
+          "A class without methods"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which statement creates a new object with a prototype?",
+        "choices": [
+          "Object.make()",
+          "new Object()",
+          "Object.create()",
+          "prototype.new()"
+        ],
+        "answer": 2
+      }
+    ],
+    [
+      {
+        "q": "What is event delegation mainly based on?",
+        "choices": [
+          "Handling events on a common ancestor",
+          "Creating one listener per page",
+          "Disabling bubbling",
+          "Replacing DOM events with CSS"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "What does the spread syntax ... commonly do with an iterable?",
+        "choices": [
+          "Deletes it",
+          "Expands its elements",
+          "Converts it to JSON",
+          "Freezes it"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which Promise combinator fulfills only when all input Promises fulfill?",
+        "choices": [
+          "Promise.any()",
+          "Promise.race()",
+          "Promise.all()",
+          "Promise.some()"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "What is destructuring assignment used for?",
+        "choices": [
+          "Extracting values from arrays/objects into variables",
+          "Encrypting variables",
+          "Creating CSS classes",
+          "Compiling Java"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which statement about JavaScript modules is correct?",
+        "choices": [
+          "import/export can be used to share module bindings",
+          "Modules cannot contain functions",
+          "Modules only work in CSS",
+          "export deletes variables"
+        ],
+        "answer": 0
+      }
+    ]
+  ],
+  "Java": [
+    [
+      {
+        "q": "Which keyword declares a class in Java?",
+        "choices": [
+          "class",
+          "define",
+          "struct",
+          "object"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which method is the usual entry point of a Java application?",
+        "choices": [
+          "start()",
+          "run()",
+          "main()",
+          "begin()"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which symbol ends most Java statements?",
+        "choices": [
+          ".",
+          ":",
+          ";",
+          ","
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which type stores true or false?",
+        "choices": [
+          "bool",
+          "boolean",
+          "bit",
+          "logical"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which keyword creates an object?",
+        "choices": [
+          "make",
+          "create",
+          "new",
+          "object"
+        ],
+        "answer": 2
+      }
+    ],
+    [
+      {
+        "q": "Which collection stores elements in a resizable list?",
+        "choices": [
+          "ArrayList",
+          "Array",
+          "ListBox",
+          "VectorListOnly"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which keyword prevents a variable from being reassigned?",
+        "choices": [
+          "constant",
+          "final",
+          "fixed",
+          "readonly"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which access modifier makes a member accessible from anywhere?",
+        "choices": [
+          "private",
+          "protected",
+          "public",
+          "global"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which loop is designed to iterate over elements of an array or collection?",
+        "choices": [
+          "foreach",
+          "enhanced for",
+          "repeat",
+          "iterate"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which class is commonly used to read keyboard input?",
+        "choices": [
+          "ReaderInput",
+          "Scanner",
+          "Keyboard",
+          "InputReaderOnly"
+        ],
+        "answer": 1
+      }
+    ],
+    [
+      {
+        "q": "What does method overloading mean?",
+        "choices": [
+          "Same method name with different parameter lists",
+          "Overwriting a file",
+          "Deleting a method",
+          "Changing a class name"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which keyword is used when one class inherits another?",
+        "choices": [
+          "inherits",
+          "extends",
+          "implements",
+          "superclass"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which keyword is used when a class follows an interface contract?",
+        "choices": [
+          "extends",
+          "uses",
+          "implements",
+          "interface"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which exception type represents many unchecked runtime exceptions?",
+        "choices": [
+          "RuntimeException",
+          "CheckedException",
+          "CompileException",
+          "RunOnlyException"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which collection does not allow duplicate elements?",
+        "choices": [
+          "List",
+          "Set",
+          "ArrayList",
+          "QueueList"
+        ],
+        "answer": 1
+      }
+    ],
+    [
+      {
+        "q": "What is polymorphism in object-oriented Java?",
+        "choices": [
+          "One interface/reference can represent different object forms",
+          "Only using private fields",
+          "Running code in parallel only",
+          "Using many packages"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which keyword refers to the current object?",
+        "choices": [
+          "current",
+          "this",
+          "self",
+          "object"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "Which keyword refers to the parent class members or constructor?",
+        "choices": [
+          "parent",
+          "base",
+          "super",
+          "extends"
+        ],
+        "answer": 2
+      },
+      {
+        "q": "Which interface is commonly used to define a task for a thread?",
+        "choices": [
+          "Runnable",
+          "Threadable",
+          "RunTask",
+          "ExecutorOnly"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "What does try-with-resources help manage?",
+        "choices": [
+          "Resources that implement AutoCloseable",
+          "Only arrays",
+          "Only threads",
+          "Only GUI components"
+        ],
+        "answer": 0
+      }
+    ],
+    [
+      {
+        "q": "What is the purpose of generics such as List<String>?",
+        "choices": [
+          "Provide compile-time type safety",
+          "Make Java dynamically typed",
+          "Encrypt strings",
+          "Increase CPU speed"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "What is a lambda expression commonly used to represent?",
+        "choices": [
+          "A function-like value for a functional interface",
+          "A class file",
+          "A package",
+          "A database"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which interface has a single abstract method and can be targeted by a lambda?",
+        "choices": [
+          "Serializable",
+          "Functional interface",
+          "Cloneable",
+          "Marker interface"
+        ],
+        "answer": 1
+      },
+      {
+        "q": "What does the Stream API primarily support?",
+        "choices": [
+          "Declarative processing of sequences of data",
+          "Drawing Swing windows only",
+          "Compiling bytecode",
+          "Managing files only"
+        ],
+        "answer": 0
+      },
+      {
+        "q": "Which statement about checked exceptions is correct?",
+        "choices": [
+          "They generally must be caught or declared",
+          "They can never be caught",
+          "They only occur in constructors",
+          "They are the same as errors"
+        ],
+        "answer": 0
+      }
+    ]
+  ]
+}
