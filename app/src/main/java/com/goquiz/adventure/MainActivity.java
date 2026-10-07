@@ -937,7 +937,7 @@ public class MainActivity extends Activity {
 
         Button play = createStyledButton("PLAY");
         setButtonFantasyStyle(play, Color.rgb(116, 67, 18), GOLD_LIGHT);
-        Button credits = createStyledButton("CREDITS");
+        Button credits = createStyledButton("CREDITS & VERSION");
         Button badges = createStyledButton("BADGES & PROGRESS");
         Button leader = createStyledButton("ONLINE LEADERBOARD");
         Button settings = createStyledButton("SETTINGS");
@@ -958,30 +958,89 @@ public class MainActivity extends Activity {
     void showCreditsScreen() {
         currentScreen = Screen.CREDITS;
         LinearLayout p = createFantasyPageContainer();
-        TextView t = createStyledTextView("CREDITS", 30);
+        float density = getResources().getDisplayMetrics().density;
+
+        TextView t = createStyledTextView("CREDITS & VERSION", 26);
         t.setTextColor(GOLD_LIGHT);
         addViewToVerticalLayout(p, t);
-        addVerticalSpacing(p, 12);
+        addViewToVerticalLayout(p, createStyledTextView("Game Information & Version Control", 13));
+        addVerticalSpacing(p, 10);
 
-        TextView name = createStyledTextView("GOQUIZ ADVENTURE", 22);
-        name.setTextColor(GOLD_LIGHT);
-        addViewToVerticalLayout(p, name);
+        String appVersionName = "1.0.0";
+        int appVersionCode = 1;
+        try {
+            android.content.pm.PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+            appVersionName = pInfo.versionName != null ? pInfo.versionName : "1.0.0";
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                appVersionCode = (int) pInfo.getLongVersionCode();
+            } else {
+                appVersionCode = pInfo.versionCode;
+            }
+        } catch (Exception ignored) {}
 
-        TextView d1 = createStyledTextView("Computer Science & Web Programming\nInteractive Adventure Game", 16);
-        d1.setTextColor(TEXT);
-        addViewToVerticalLayout(p, d1);
+        // Card 1: Version Control & System Info
+        LinearLayout vcCard = new LinearLayout(this);
+        vcCard.setOrientation(LinearLayout.VERTICAL);
+        vcCard.setPadding((int) (16 * density), (int) (12 * density), (int) (16 * density), (int) (12 * density));
+        android.graphics.drawable.GradientDrawable vcBg = new android.graphics.drawable.GradientDrawable();
+        vcBg.setColor(Color.argb(140, 18, 26, 36));
+        vcBg.setCornerRadius(10 * density);
+        vcBg.setStroke((int) (1f * density), Color.argb(100, 231, 160, 39));
+        vcCard.setBackground(vcBg);
 
-        addVerticalSpacing(p, 8);
-        TextView d2 = createStyledTextView("Curriculum Languages:\nHTML • CSS • JavaScript • Java", 15);
-        d2.setTextColor(MUTED);
-        addViewToVerticalLayout(p, d2);
+        TextView vcHeader = createStyledTextView("VERSION CONTROL & BUILD INFO", 15);
+        vcHeader.setTextColor(GOLD_LIGHT);
+        vcHeader.setGravity(Gravity.START);
+        vcCard.addView(vcHeader);
+        addVerticalSpacing(vcCard, 6);
 
-        addVerticalSpacing(p, 8);
-        TextView d3 = createStyledTextView("Multi-Platform Audio & Networking:\nSoundPool SFX • Looping BG Music\nAndroid-Hosted Socket Server :5050", 14);
-        d3.setTextColor(GOLD);
-        addViewToVerticalLayout(p, d3);
+        TextView vInfo = createStyledTextView(
+                "• App Version: v" + appVersionName + " (Build " + appVersionCode + ")\n" +
+                "• Channel: Production Release\n" +
+                "• VCS Branch: main  |  Commit: b5b498d\n" +
+                "• Platform: Android SDK 35 (Target 15+)\n" +
+                "• Engine: Native Java 17 • SoundPool • SocketServer\n" +
+                "• Version Status: Up to date ✓",
+                12
+        );
+        vInfo.setTextColor(TEXT);
+        vInfo.setGravity(Gravity.START);
+        vcCard.addView(vInfo);
+        addViewToVerticalLayout(p, vcCard);
 
-        addVerticalSpacing(p, 16);
+        addVerticalSpacing(p, 10);
+
+        // Card 2: Credits & Curriculum Details
+        LinearLayout crCard = new LinearLayout(this);
+        crCard.setOrientation(LinearLayout.VERTICAL);
+        crCard.setPadding((int) (16 * density), (int) (12 * density), (int) (16 * density), (int) (12 * density));
+        android.graphics.drawable.GradientDrawable crBg = new android.graphics.drawable.GradientDrawable();
+        crBg.setColor(Color.argb(140, 18, 26, 36));
+        crBg.setCornerRadius(10 * density);
+        crBg.setStroke((int) (1f * density), Color.argb(100, 231, 160, 39));
+        crCard.setBackground(crBg);
+
+        TextView crHeader = createStyledTextView("GOQUIZ ADVENTURE CREDITS", 15);
+        crHeader.setTextColor(GOLD_LIGHT);
+        crHeader.setGravity(Gravity.START);
+        crCard.addView(crHeader);
+        addVerticalSpacing(crCard, 6);
+
+        TextView crInfo = createStyledTextView(
+                "Computer Science & Web Programming Adventure\n\n" +
+                "Curriculum Modules:\n" +
+                "HTML • CSS • JavaScript • Java (All Levels Active)\n\n" +
+                "Multi-Platform Audio & Networking:\n" +
+                "SoundPool SFX • Looping BG Music\n" +
+                "Android-Hosted LAN Socket Server :5050",
+                12
+        );
+        crInfo.setTextColor(MUTED);
+        crInfo.setGravity(Gravity.START);
+        crCard.addView(crInfo);
+        addViewToVerticalLayout(p, crCard);
+
+        addVerticalSpacing(p, 14);
         Button back = createStyledButton("BACK TO HOME");
         addCenteredMenuButton(p, back);
         back.setOnClickListener(v -> showHomeScreen());
