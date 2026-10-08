@@ -22,13 +22,37 @@ public class QuizServer {
         loadLeaderboard();
     }
 
+    private volatile ServerSocket serverSocket;
+    private volatile boolean running = false;
+
     public void start() throws IOException {
-        try (ServerSocket server = new ServerSocket(port)) {
-            System.out.println("Quiz Adventure Leaderboard Server running on port " + port);
-            System.out.println("Students connect using this server PC's IP address.");
-            System.out.println("Only highest scores are stored. No multiplayer rooms are used.");
-            while (true) new ClientHandler(server.accept()).start();
+        if (running) return;
+        running = true;
+        serverSocket = new ServerSocket(port);
+        System.out.println("Quiz Adventure Leaderboard Server running on port " + port);
+        System.out.println("Students connect using this server PC's IP address.");
+        System.out.println("Only highest scores are stored. No multiplayer rooms are used.");
+        while (running) {
+            try {
+                Socket socket = serverSocket.accept();
+                new ClientHandler(socket).start();
+            } catch (SocketException e) {
+                if (!running) break;
+            }
         }
+    }
+
+    public synchronized void stop() {
+        running = false;
+        if (serverSocket != null && !serverSocket.isClosed()) {
+            try {
+                serverSocket.close();
+            } catch (IOException ignored) {}
+        }
+    }
+
+    public boolean isRunning() {
+        return running;
     }
 
     private synchronized void loadLeaderboard() {

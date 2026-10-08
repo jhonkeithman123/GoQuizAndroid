@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.goquiz.adventure.app-debug-4:/values_values.arsc.flat",
+            "outputFile": "goquiz.app-debug-4:/values_values.arsc.flat",
             "map": [
                 {
                     "source": "C:\\Users\\131fgh\\Desktop\\GoQuizAndroidRebuilt\\app\\src\\main\\res\\values\\styles.xml",

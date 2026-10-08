@@ -46,6 +46,46 @@ java -version
 - **Target SDK**: `35`
 - **Min SDK**: `23` (Supports Android 6.0 through Android 15+)
 - **Network Permissions**: `android.permission.INTERNET` (configured in [AndroidManifest.xml](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/app/src/main/AndroidManifest.xml))
+- **Animation & Cinematic System**:
+  - **Pre-Question Cinematic Intro**: Plays a 7-panel mix-fade (crossfade) narrative sequence (`Frame1.jpg` to `Frame7.jpg`) after selecting a level before displaying Question 1, with a fair duration (~1.5s display + 600ms crossfade), interactive screen tap advance, and an instant `SKIP ⏩` button.
+  - **Question Screen Background**: Uses `Frame7.jpg` as the in-game background for the questions menu, preserving cinematic continuity from the end of the cutscene straight into gameplay.
+  - **Correct Answer Combat Strike Animation**: When answering an intermediate question correctly, the background animates the hero's strike (`Frame 7 -> Frame 8 -> Frame 9 -> Frame 7`) while the question card gently dims, landing a physical blow on the monster before Question 2+ glides in.
+  - **Final Question Victory Sequence**: Answering the final question correctly triggers a celebratory cutscene across 6 frames (`Frame 7 -> Frame 8 -> Frame 9 -> Frame 15 -> Frame 16 -> Frame 17`), concluding with the monster's defeat and hero's victory.
+  - **Wrong Answer Damage Reactions**:
+    - Intermediate questions (health > 2): Plays `Frame 10` (`Frame10Alt.jpg`) and returns smoothly to `Frame 7` (`Frame7.jpg`) before moving to the next question.
+    - Intermediate questions (last 2 health, `hearts == 2` or `hearts == 1`): Plays `Frame 11` (`Frame11Alt.jpg`) instead and returns smoothly to `Frame 7`.
+    - **Final Question Wrong Answer with Hearts Remaining**: If the player fails the final question of a level but still has hearts left, triggers a climactic battle clash: monster attacks (`Frame 10`), hero counter-attacks (`Frame 9`), and the killing sequence plays (`Frame 15 -> Frame 16 -> Frame 17`), concluding with the level complete retry screen (`Frame 4`).
+  - **Health 0 Defeat Cinematic & Game Over Menu**:
+    - When health reaches 0, plays an immersive cinematic sequence from `Frame 11` to `Frame 14` (`Frame11Alt.jpg` -> `Frame12Alt.jpg` -> `Frame13Alt.jpg` -> `Frame14Alt.jpg`) with narrative defeat subtitles and skip support.
+    - Displays a dedicated `"GAME OVER"` menu with `Frame14Alt.jpg` background, retry level, back to levels, and back to main menu options.
+  - **Play-to-Menu Fade Transitions**: Smooth fade-out (`alpha -> 0f`) transitions whenever navigating away from gameplay or between menus (quit dialog confirm, level complete back, game over back, and navigation buttons).
+  - **Level Complete Screen Background (`Frame 4`)**: When finishing a level with hearts left, the background shown on the Level Complete menu displays `Frame 4` (`Frame4.jpg`).
+  - **Next Level & Level Replay Cinematic Continuation (Skip to Frame 5)**:
+    - Advancing to the next level (`NEXT LEVEL`), replaying a cleared level (`REPLAY LEVEL`), or retrying for a perfect score (`TRY AGAIN FOR PERFECT SCORE`) skips the outdoor approach cutscenes (`Frame 1` to `Frame 4`).
+    - Since the hero concluded the previous level inside the cave (`Frame 4`), the pre-quiz narrative resumes seamlessly at **`Frame 5`** (`Frame 5` beast roars $\rightarrow$ `Frame 6` draws blade $\rightarrow$ `Frame 7` battle begins) with dynamic progress dots and matching captions.
+  - **Death / Game Over Dramatic Restart & Extended Fade-Out**:
+    - When running out of hearts and retrying from the Game Over screen (`TRY AGAIN ↺`), the animation completely restarts from the beginning (**`Frame 1`** through `Frame 7`).
+    - Employs an extended, deliberate **650ms fade-out** (compared to the standard 220ms menu fade) to emphasize defeat and dramatic retry.
+  - **Universal Smooth Frame Switching Transitions**:
+    - Every frame switch throughout the app uses smooth animated transitions:
+      - Initial frames in all cutscenes and screens fade in smoothly (`alpha 0f -> 1f` in 280ms–400ms).
+      - Story cutscenes (Intro 1–7, Victory 7–17, Defeat 11–14) crossfade smoothly between dual image views with `AccelerateDecelerateInterpolator` (400ms–550ms).
+      - In-game attack strike (`7 -> 8 -> 9 -> 7`) and damage reactions (`7 -> 10/11 -> 7`) smoothly crossfade (180ms–200ms).
+      - Screen transitions fade out both background frames and UI content together before loading destination screens.
+  - **Midway Quiz Save & Resume System**:
+    - When quitting a quiz in progress (via `🏠 MENU` button or Android Back button), players are presented with a styled dialog:
+      - **SAVE PROGRESS & QUIT 💾**: Saves complete run state (current question index, score, correct answers count, remaining hearts, language, level, difficulty, and question pool) to `SharedPreferences` keyed per student.
+      - **DISCARD PROGRESS ✕**: Clears saved midway run and returns cleanly to Main Menu.
+      - **CONTINUE PLAYING ▶**: Dismisses dialog and stays in the active question without penalty.
+    - **Resume Access Points**:
+      - **Home Screen**: A prominent green `"RESUME QUIZ 💾 (Language • Level X • Qn/5)"` button appears dynamically above the main menu buttons.
+      - **Level Selection Screen**: The specific level button is highlighted green with a dynamic badge: `"LEVEL X • RESUME SAVED (Qn/5) 💾"`.
+    - **Auto-Cleanup**: Saved midway progress is automatically discarded upon level completion (both victory and retry) or game over defeat to ensure fresh runs on subsequent plays.
+  - **Account Session Persistence**:
+    - Student login is preserved across application closure and phone restarts via encrypted `SharedPreferences` session tracking (`loggedInStudent`).
+    - Launching the app while previously logged in bypasses the login screen directly to the Main Menu with student credentials intact.
+    - Session is only terminated when explicitly tapping `"LOG OUT 🚪"` in the game menus.
+  - **Memory & Performance Optimization**: On-demand asynchronous decoding with hardware-accelerated dual-`ImageView` crossfading, screen-proportionate `inSampleSize`, `RGB_565` bitmap configuration, and immediate recycling of bitmaps to ensure zero OOM risk and fluid 60 FPS transitions.
 - **External Runtime**:
   - The in-game leaderboard connects to the desktop **QuizServer** via TCP socket on **port 5050** over Wi-Fi / LAN.
 
@@ -61,21 +101,22 @@ GoQuizAndroidRebuilt/
 │   ├── app-debug.apk                  # Development APK with debugging enabled
 │   └── app-release.apk                # Optimized Release APK (signed & installable)
 ├── app/                               # Main Android application module
-│   ├── build.gradle                   # App module build configuration, SDK versions & tasks
+│   ├── build.gradle                   # App module build configuration, SDK versions, namespace & sourceSets
 │   └── src/
 │       └── main/
 │           ├── AndroidManifest.xml    # App manifest (permissions, main activity, theme, launcher icons)
 │           ├── assets/
-│           │   ├── questions.json     # 5-level question bank for HTML, CSS, JS, and Java
-│           │   ├── images/            # Packaged icon & wallpaper assets
-│           │   │   ├── GoQuiz.ico
-│           │   │   └── quiz_adventure_background.png
+│           │   ├── questions.json     # 480-question categorized bank across 4 languages, 3 difficulties & 5 levels (8 per level)
+│           │   ├── images/            # Packaged icon, wallpaper, and gender-based animation frame folders
+│           │   │   ├── Boy/           # Boy default character frames (Frame1-17, quiz_adventure_background.png)
+│           │   │   ├── Girl/          # Girl character frames & wallpaper (Frame1-17, quiz_adventure_background.jpg)
+│           │   │   └── GoQuiz.ico
 │           │   └── sounds/            # Packaged audio assets
 │           │       ├── click.wav      # Button tap audio feedback
 │           │       ├── damage.wav     # Heart loss sound on wrong answer
 │           │       └── menu_theme.wav # Background soundtrack
-│           ├── java/com/goquiz/adventure/
-│           │   ├── MainActivity.java  # Full Android game (all desktop screens, difficulty engine, audio, UI)
+│           ├── goquiz/                # Un-nested Java source directory (directly in src/main/goquiz)
+│           │   ├── MainActivity.java  # Full Android game (all screens, difficulty engine, audio, frame engine)
 │           │   └── QuizServer.java    # Embedded leaderboard server (can host directly on Android)
 │           └── res/
 │               ├── drawable/          # UI drawables (card_panel, btn_fantasy, progress_fantasy, ic_launcher)
@@ -91,10 +132,6 @@ GoQuizAndroidRebuilt/
 │   ├── QuizServer.java                # Pure Java socket server (port 5050)
 │   ├── run-server.bat                 # 1-Click launcher to run QuizServer on PC
 │   └── online_leaderboard.properties  # Stored student rankings
-├── images/                            # Master artwork and icon sources
-│   ├── GoQuiz.ico                     # Master app icon source file
-│   └── quiz_adventure_background.png  # Master fantasy wallpaper
-├── sounds/                            # Master game audio files
 ├── gradle/wrapper/                    # Gradle wrapper binaries & distribution configuration
 │   ├── gradle-wrapper.jar
 │   └── gradle-wrapper.properties

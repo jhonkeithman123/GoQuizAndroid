@@ -6,7 +6,8 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:resizeableActivity="true" 
         android:allowBackup="true" 
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:largeHeap="true">
         <activity android:name=".MainActivity" android:screenOrientation="unspecified" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

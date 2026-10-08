@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.goquiz.adventure"
-    android:versionCode="1"
-    android:versionName="1.0" >
+    android:versionCode="2"
+    android:versionName="1.1.0" >
 
     <uses-sdk
         android:minSdkVersion="23"
@@ -16,12 +16,13 @@
         android:extractNativeLibs="false"
         android:icon="@mipmap/ic_launcher"
         android:label="GoQuiz Adventure"
+        android:largeHeap="true"
         android:resizeableActivity="true"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/AppTheme" >
         <activity
-            android:name="com.goquiz.adventure.MainActivity"
+            android:name="goquiz.MainActivity"
             android:exported="true"
             android:screenOrientation="unspecified" >
             <intent-filter>

@@ -1,6 +1,6 @@
-#Wed Oct 07 22:29:55 PST 2026
-base.1=C\:\\Users\\131fgh\\Desktop\\GoQuizAndroidRebuilt\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\11\\classes.dex
-path.1=11/classes.dex
+#Thu Oct 08 21:00:45 PST 2026
+base.1=C\:\\Users\\131fgh\\Desktop\\GoQuizAndroidRebuilt\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\6\\classes.dex
+path.1=6/classes.dex
 base.0=C\:\\Users\\131fgh\\Desktop\\GoQuizAndroidRebuilt\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\0\\classes.dex
 renamed.1=classes2.dex
 renamed.0=classes.dex

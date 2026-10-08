@@ -46,6 +46,7 @@ public class QuizGame extends JFrame {
     private OnlineClient onlineClient;
     private String onlineServerHost = "127.0.0.1";
     private int onlineServerPort = 5050;
+    private boolean onlineAutoConnect = true;
 
     // The computer running the game can automatically host the shared leaderboard.
     // Other devices can connect to this computer using its LAN IP address.
@@ -202,37 +203,29 @@ public class QuizGame extends JFrame {
     // =========================
     // LOAD BACKGROUND
     // =========================
+    private String getGenderFolder() {
+        return ("Female".equalsIgnoreCase(studentGender) || "Girl".equalsIgnoreCase(studentGender)) ? "Girl" : "Boy";
+    }
+
     private void loadBackground() {
-
         background = null;
+        String gender = getGenderFolder();
+        File[] candidates = new File[]{
+                new File("images/" + gender + "/quiz_adventure_background.png"),
+                new File("app/src/main/assets/images/" + gender + "/quiz_adventure_background.png"),
+                new File("images/Boy/quiz_adventure_background.png"),
+                new File("app/src/main/assets/images/Boy/quiz_adventure_background.png"),
+                new File("images/quiz_adventure_background.png"),
+                new File("app/src/main/assets/images/quiz_adventure_background.png")
+        };
 
-        /*
-         * Your folder should be:
-         *
-         * QuizGame
-         * |
-         * |-- QuizGame.java
-         * |
-         * |-- images
-         *      |
-         *      |-- quiz_adventure_background.png
-         */
-
-        File file = new File(
-                "images/quiz_adventure_background.png"
-        );
-
-        try {
-
+        for (File file : candidates) {
             if (file.exists()) {
-
-                background = ImageIO.read(file);
-
+                try {
+                    background = ImageIO.read(file);
+                    if (background != null) break;
+                } catch (IOException ignored) {}
             }
-
-        } catch (IOException e) {
-
-            background = null;
         }
     }
 
@@ -1431,6 +1424,7 @@ public class QuizGame extends JFrame {
     // AUTOMATIC LEADERBOARD SERVER
     // =========================
     private void startEmbeddedLeaderboardServer() {
+        if (embeddedServer != null && embeddedServer.isRunning()) return;
         if (embeddedServerThread != null && embeddedServerThread.isAlive()) return;
 
         embeddedServerThread = new Thread(() -> {
@@ -1446,6 +1440,17 @@ public class QuizGame extends JFrame {
         }, "QuizLeaderboardServer");
         embeddedServerThread.setDaemon(true);
         embeddedServerThread.start();
+    }
+
+    private void stopEmbeddedLeaderboardServer() {
+        if (embeddedServer != null) {
+            embeddedServer.stop();
+            embeddedServer = null;
+        }
+        if (embeddedServerThread != null) {
+            embeddedServerThread.interrupt();
+            embeddedServerThread = null;
+        }
     }
 
     // =========================
@@ -1631,9 +1636,11 @@ public class QuizGame extends JFrame {
                 )
         );
 
+        String heroTxt = studentName.isEmpty() ? "Choose your adventure" :
+                (studentName + " • " + gradeLevel + " • " + studentSection + " • Hero: " + (getGenderFolder().equals("Girl") ? "Girl ♀" : "Boy ♂"));
         JLabel subtitle =
                 new JLabel(
-                        "Choose your adventure",
+                        heroTxt,
                         SwingConstants.CENTER
                 );
 
@@ -1771,98 +1778,209 @@ public class QuizGame extends JFrame {
         JPanel panel = createBackgroundPanel();
         panel.setLayout(new BorderLayout());
 
+        JPanel topHeader = new JPanel();
+        topHeader.setOpaque(false);
+        topHeader.setLayout(new BoxLayout(topHeader, BoxLayout.Y_AXIS));
+        topHeader.setBorder(BorderFactory.createEmptyBorder(18, 0, 8, 0));
+
         JLabel title = new JLabel("ONLINE LEADERBOARD", SwingConstants.CENTER);
-        title.setFont(pixelFont(Font.BOLD, 34));
-        title.setForeground(TEXT);
-        title.setBorder(BorderFactory.createEmptyBorder(25, 0, 15, 0));
-        panel.add(title, BorderLayout.NORTH);
+        title.setFont(pixelFont(Font.BOLD, 32));
+        title.setForeground(GOLD_LIGHT);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JPanel card = new FantasyPanel();
-        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBorder(BorderFactory.createEmptyBorder(25, 45, 25, 45));
-
-        JLabel info = new JLabel("See the highest score of every student", SwingConstants.CENTER);
-        info.setFont(pixelFont(Font.PLAIN, 16));
+        JLabel info = new JLabel("Compete across devices over LAN or Wi-Fi", SwingConstants.CENTER);
+        info.setFont(pixelFont(Font.PLAIN, 14));
         info.setForeground(MUTED);
         info.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JTextField host = new JTextField(onlineServerHost);
-        JTextField port = new JTextField(String.valueOf(onlineServerPort));
-        host.setMaximumSize(new Dimension(380, 40));
-        port.setMaximumSize(new Dimension(380, 40));
-        host.setAlignmentX(Component.CENTER_ALIGNMENT);
-        port.setAlignmentX(Component.CENTER_ALIGNMENT);
-        host.setFont(pixelFont(Font.PLAIN, 15));
-        port.setFont(pixelFont(Font.PLAIN, 15));
+        JLabel statusLabel = new JLabel("Connecting to leaderboard server...", SwingConstants.CENTER);
+        statusLabel.setFont(pixelFont(Font.BOLD, 14));
+        statusLabel.setForeground(GOLD_LIGHT);
+        statusLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JLabel hostLabel = new JLabel("SERVER IP / HOST", SwingConstants.CENTER);
-        JLabel portLabel = new JLabel("PORT", SwingConstants.CENTER);
-        for (JLabel l : new JLabel[]{hostLabel, portLabel}) {
-            l.setForeground(GOLD_LIGHT);
-            l.setFont(pixelFont(Font.BOLD, 13));
-            l.setAlignmentX(Component.CENTER_ALIGNMENT);
+        topHeader.add(title);
+        topHeader.add(Box.createVerticalStrut(4));
+        topHeader.add(info);
+        topHeader.add(Box.createVerticalStrut(6));
+        topHeader.add(statusLabel);
+        topHeader.add(Box.createVerticalStrut(10));
+
+        // 1. TOP CONTROLS PANEL (All action buttons & inputs placed right below connectivity status)
+        JPanel controlsPanel = new JPanel();
+        controlsPanel.setOpaque(false);
+        controlsPanel.setLayout(new BoxLayout(controlsPanel, BoxLayout.Y_AXIS));
+        controlsPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        // Action Buttons Row: Host Server, Auto-Connect, Connect & Refresh
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
+        btnRow.setOpaque(false);
+
+        boolean serverRunning = (embeddedServer != null && embeddedServer.isRunning());
+        JButton hostBtn = createCompactFantasyButton(serverRunning ? "STOP LOCAL SERVER" : "HOST LOCAL SERVER", 220, 42);
+        if (serverRunning) hostBtn.setBackground(new Color(110, 35, 35));
+
+        JButton autoConnectBtn = createCompactFantasyButton(onlineAutoConnect ? "AUTO-CONNECT: ON ✓" : "AUTO-CONNECT: OFF ✕", 210, 42);
+        if (onlineAutoConnect) {
+            autoConnectBtn.setBackground(new Color(28, 75, 45));
+            autoConnectBtn.setForeground(new Color(90, 220, 120));
+        } else {
+            autoConnectBtn.setBackground(new Color(35, 45, 55));
+            autoConnectBtn.setForeground(MUTED);
         }
 
-        JTextArea board = new JTextArea("Connect to the leaderboard server to load rankings...");
-        board.setEditable(false);
-        board.setFont(pixelFont(Font.BOLD, 18));
-        board.setForeground(TEXT);
-        board.setBackground(PANEL);
-        board.setBorder(BorderFactory.createEmptyBorder(20, 35, 20, 35));
+        JButton connect = createCompactFantasyButton("CONNECT & REFRESH ↺", 230, 42);
+        connect.setBackground(new Color(116, 67, 18));
+        connect.setForeground(GOLD_LIGHT);
 
-        JButton connect = createFantasyButton("CONNECT / REFRESH");
-        JButton back = createFantasyButton("BACK");
-        connect.setAlignmentX(Component.CENTER_ALIGNMENT);
-        back.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnRow.add(hostBtn);
+        btnRow.add(autoConnectBtn);
+        btnRow.add(connect);
+        controlsPanel.add(btnRow);
+        controlsPanel.add(Box.createVerticalStrut(8));
+
+        // Inputs Row: Server IP and Port
+        JPanel inputRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        inputRow.setOpaque(false);
+
+        JLabel hostL = new JLabel("Server IP:");
+        hostL.setFont(pixelFont(Font.BOLD, 13));
+        hostL.setForeground(GOLD_LIGHT);
+
+        JTextField host = new JTextField(onlineServerHost, 15);
+        styleFantasyInput(host);
+        host.setPreferredSize(new Dimension(200, 36));
+
+        JLabel portL = new JLabel("Port:");
+        portL.setFont(pixelFont(Font.BOLD, 13));
+        portL.setForeground(GOLD_LIGHT);
+
+        JTextField port = new JTextField(String.valueOf(onlineServerPort), 5);
+        styleFantasyInput(port);
+        port.setPreferredSize(new Dimension(90, 36));
+
+        inputRow.add(hostL);
+        inputRow.add(host);
+        inputRow.add(portL);
+        inputRow.add(port);
+        controlsPanel.add(inputRow);
+
+        topHeader.add(controlsPanel);
+        panel.add(topHeader, BorderLayout.NORTH);
+
+        // 2. EXPANDED LEADERBOARD CARD (Center area)
+        JPanel center = new JPanel(new GridBagLayout());
+        center.setOpaque(false);
+
+        FantasyPanel boardCard = new FantasyPanel();
+        boardCard.setLayout(new BorderLayout(0, 10));
+        boardCard.setBorder(BorderFactory.createEmptyBorder(15, 25, 15, 25));
+        boardCard.setPreferredSize(new Dimension(860, 360));
+
+        JPanel cardHeader = new JPanel(new BorderLayout());
+        cardHeader.setOpaque(false);
+        JLabel boardTitle = new JLabel("🏆 TOP ADVENTURERS & RANKINGS", SwingConstants.CENTER);
+        boardTitle.setFont(pixelFont(Font.BOLD, 17));
+        boardTitle.setForeground(GOLD_LIGHT);
+        cardHeader.add(boardTitle, BorderLayout.NORTH);
+        boardCard.add(cardHeader, BorderLayout.NORTH);
+
+        JTextArea board = new JTextArea("Connecting to leaderboard...");
+        board.setEditable(false);
+        board.setFont(pixelFont(Font.BOLD, 16));
+        board.setForeground(TEXT);
+        board.setBackground(new Color(10, 16, 24));
+        board.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
+
+        JScrollPane scroll = new JScrollPane(board);
+        scroll.setBorder(new GoldBorder(1, 8));
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
+        boardCard.add(scroll, BorderLayout.CENTER);
+
+        center.add(boardCard);
+        panel.add(center, BorderLayout.CENTER);
+
+        // 3. BOTTOM: Only Back to Home
+        JPanel bottom = new JPanel();
+        bottom.setOpaque(false);
+        bottom.setBorder(BorderFactory.createEmptyBorder(10, 0, 18, 0));
+        JButton back = createFantasyButton("BACK TO HOME");
+        back.addActionListener(e -> showHome());
+        bottom.add(back);
+        panel.add(bottom, BorderLayout.SOUTH);
+
+        hostBtn.addActionListener(e -> {
+            if (embeddedServer != null && embeddedServer.isRunning()) {
+                stopEmbeddedLeaderboardServer();
+                hostBtn.setText("HOST LOCAL SERVER");
+                hostBtn.setBackground(new Color(26, 36, 48));
+                JOptionPane.showMessageDialog(this, "Local server stopped.", "Notice", JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                startEmbeddedLeaderboardServer();
+                hostBtn.setText("STOP LOCAL SERVER");
+                hostBtn.setBackground(new Color(110, 35, 35));
+                JOptionPane.showMessageDialog(this, "QuizServer is running on port " + onlineServerPort + "!\nOther devices on this Wi-Fi can connect.", "Notice", JOptionPane.INFORMATION_MESSAGE);
+            }
+        });
+
+        autoConnectBtn.addActionListener(e -> {
+            onlineAutoConnect = !onlineAutoConnect;
+            autoConnectBtn.setText(onlineAutoConnect ? "AUTO-CONNECT: ON ✓" : "AUTO-CONNECT: OFF ✕");
+            if (onlineAutoConnect) {
+                autoConnectBtn.setBackground(new Color(28, 75, 45));
+                autoConnectBtn.setForeground(new Color(90, 220, 120));
+            } else {
+                autoConnectBtn.setBackground(new Color(35, 45, 55));
+                autoConnectBtn.setForeground(MUTED);
+            }
+        });
 
         connect.addActionListener(e -> {
             try {
                 String h = host.getText().trim();
                 int prt = Integer.parseInt(port.getText().trim());
-                if (h.isEmpty()) throw new IllegalArgumentException("Server host is required.");
-                if (prt < 1 || prt > 65535) throw new IllegalArgumentException("Invalid port.");
-
-                onlineServerHost = h;
-                onlineServerPort = prt;
-
-                if (onlineClient != null) onlineClient.close();
-                onlineClient = new OnlineClient(onlineServerHost, onlineServerPort);
-                onlineClient.leaderboardArea = board;
-
-                // Upload this student's current/highest score, then load everybody's scores.
-                onlineClient.send("SCORE|" + cleanNet(studentName) + "|" + score);
-                onlineClient.send("LEADERBOARD");
-                board.setText("Loading leaderboard...");
+                executeOnlineLeaderboardFetch(h, prt, board, statusLabel, true);
             } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Invalid host or port: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        if (onlineAutoConnect) {
+            executeOnlineLeaderboardFetch(onlineServerHost, onlineServerPort, board, statusLabel, false);
+        }
+
+        changeScreen(panel);
+    }
+
+    private void executeOnlineLeaderboardFetch(String h, int prt, JTextArea board, JLabel statusLabel, boolean showErrors) {
+        try {
+            if (h.isEmpty()) throw new IllegalArgumentException("Server host is required.");
+            if (prt < 1 || prt > 65535) throw new IllegalArgumentException("Invalid port.");
+
+            onlineServerHost = h;
+            onlineServerPort = prt;
+
+            statusLabel.setText("Connecting to " + h + ":" + prt + "...");
+            statusLabel.setForeground(GOLD_LIGHT);
+
+            if (onlineClient != null) onlineClient.close();
+            onlineClient = new OnlineClient(onlineServerHost, onlineServerPort);
+            onlineClient.leaderboardArea = board;
+            onlineClient.statusLabel = statusLabel;
+
+            onlineClient.send("SCORE|" + cleanNet(studentName) + "|" + score);
+            onlineClient.send("LEADERBOARD");
+            board.setText("Loading leaderboard rankings...");
+        } catch (Exception ex) {
+            statusLabel.setText("○ OFFLINE (" + h + ":" + prt + ")");
+            statusLabel.setForeground(new Color(255, 110, 110));
+            board.setText("Could not reach " + h + ":" + prt + ".\nMake sure QuizServer is running on this network.");
+            if (showErrors) {
                 JOptionPane.showMessageDialog(this,
                         "Could not connect to the leaderboard server.\n" + ex.getMessage(),
                         "Connection Failed", JOptionPane.ERROR_MESSAGE);
             }
-        });
-
-        back.addActionListener(e -> showHome());
-
-        card.add(info);
-        card.add(Box.createVerticalStrut(18));
-        card.add(hostLabel);
-        card.add(Box.createVerticalStrut(5));
-        card.add(host);
-        card.add(Box.createVerticalStrut(10));
-        card.add(portLabel);
-        card.add(Box.createVerticalStrut(5));
-        card.add(port);
-        card.add(Box.createVerticalStrut(15));
-        card.add(connect);
-        card.add(Box.createVerticalStrut(18));
-        card.add(new JScrollPane(board));
-        card.add(Box.createVerticalStrut(12));
-        card.add(back);
-
-        JPanel center = new JPanel(new GridBagLayout());
-        center.setOpaque(false);
-        center.add(card);
-        panel.add(center, BorderLayout.CENTER);
-        changeScreen(panel);
+        }
     }
 
     private void sendOnlineScore() {
@@ -1880,6 +1998,7 @@ public class QuizGame extends JFrame {
         private BufferedReader in;
         private BufferedWriter out;
         private JTextArea leaderboardArea;
+        private JLabel statusLabel;
 
         OnlineClient(String host, int port) throws IOException {
             socket = new Socket();
@@ -1914,7 +2033,15 @@ public class QuizGame extends JFrame {
                     }
                     if (rank == 1) b.append("No scores yet. Play a quiz first!");
                     leaderboardArea.setText(b.toString());
+                    if (statusLabel != null) {
+                        statusLabel.setText("● CONNECTED (" + onlineServerHost + ":" + onlineServerPort + ")");
+                        statusLabel.setForeground(new Color(90, 220, 120));
+                    }
                 } else if ("ERROR".equals(p[0])) {
+                    if (statusLabel != null) {
+                        statusLabel.setText("○ OFFLINE (" + onlineServerHost + ":" + onlineServerPort + ")");
+                        statusLabel.setForeground(new Color(255, 110, 110));
+                    }
                     JOptionPane.showMessageDialog(QuizGame.this,
                             p.length > 1 ? p[1] : "Server error.",
                             "Leaderboard Error", JOptionPane.ERROR_MESSAGE);
@@ -2029,6 +2156,9 @@ public class QuizGame extends JFrame {
         studentSection=a.section;
         studentGender=a.gender;
         studentPassword=a.password;
+
+        // Reload background to match hero character gender
+        loadBackground();
 
         // IMPORTANT: load progress after the account is identified.
         // This prevents one student's badges/levels from appearing on another account.
@@ -3476,6 +3606,7 @@ public class QuizGame extends JFrame {
                 new JLabel(
                         "<html><center>"
                                 + "GOQUIZ ADVENTURE"
+                                + "<br><font color='#FFCA4E'><b>Version 1.1.0 (Build 2)</b></font>"
                                 + "<br><br>"
                                 + "Created using Java Swing"
                                 + "<br>"
@@ -3674,6 +3805,25 @@ public class QuizGame extends JFrame {
                 }
         );
 
+        JButton heroButton =
+                createFantasyButton(
+                        "Hero: " + ("Girl".equals(getGenderFolder()) ? "Girl ♀" : "Boy ♂")
+                );
+
+        heroButton.addActionListener(
+                e -> {
+                    studentGender = "Girl".equals(getGenderFolder()) ? "Male" : "Female";
+                    StudentAccount a = studentAccounts.get(studentName.toLowerCase());
+                    if (a != null) {
+                        a.gender = studentGender;
+                        saveStudentAccounts();
+                    }
+                    loadBackground();
+                    heroButton.setText("Hero: " + ("Girl".equals(getGenderFolder()) ? "Girl ♀" : "Boy ♂"));
+                    JOptionPane.showMessageDialog(this, "Hero character set to " + ("Girl".equals(getGenderFolder()) ? "Girl ♀" : "Boy ♂"), "Hero Changed", JOptionPane.INFORMATION_MESSAGE);
+                }
+        );
+
         JButton reset =
                 createFantasyButton(
                         "RESET ALL BADGES"
@@ -3767,6 +3917,14 @@ public class QuizGame extends JFrame {
         );
 
         card.add(soundButton);
+
+        card.add(
+                Box.createVerticalStrut(
+                        18
+                )
+        );
+
+        card.add(heroButton);
 
         card.add(
                 Box.createVerticalStrut(
@@ -3980,6 +4138,15 @@ public class QuizGame extends JFrame {
                 Component.CENTER_ALIGNMENT
         );
 
+        return button;
+    }
+
+    private JButton createCompactFantasyButton(String text, int width, int height) {
+        JButton button = new FantasyButton(wrapHtml(text, width));
+        button.setPreferredSize(new Dimension(width, height));
+        button.setMaximumSize(new Dimension(width, height));
+        button.setMinimumSize(new Dimension(width, height));
+        button.setFont(pixelFont(Font.BOLD, 13));
         return button;
     }
 
@@ -4323,6 +4490,9 @@ public class QuizGame extends JFrame {
                     clip.setFramePosition(0);
                 } else {
                     File file = new File(filePath);
+                    if (!file.exists()) {
+                        file = new File("app/src/main/assets/" + filePath);
+                    }
                     AudioInputStream rawStream = AudioSystem.getAudioInputStream(file);
                     AudioFormat rawFormat = rawStream.getFormat();
                     
