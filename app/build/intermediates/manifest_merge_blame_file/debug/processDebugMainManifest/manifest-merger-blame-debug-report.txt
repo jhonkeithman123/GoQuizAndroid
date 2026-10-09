@@ -11,46 +11,57 @@
 11    <uses-permission android:name="android.permission.INTERNET" />
 11-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:2:5-67
 11-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:2:22-64
-12
-13    <application
-13-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:3:5-17:19
-14        android:allowBackup="true"
-14-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:8:9-35
-15        android:debuggable="true"
-16        android:extractNativeLibs="false"
-17        android:icon="@mipmap/ic_launcher"
-17-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:5:9-43
-18        android:label="GoQuiz Adventure"
-18-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:4:9-41
-19        android:largeHeap="true"
-19-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:10:9-33
-20        android:resizeableActivity="true"
-20-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:7:9-42
-21        android:roundIcon="@mipmap/ic_launcher"
-21-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:6:9-48
-22        android:supportsRtl="true"
-22-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:9:9-35
-23        android:theme="@style/AppTheme" >
-23-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:3:18-49
-24        <activity
-24-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:11:9-16:20
-25            android:name="goquiz.MainActivity"
-25-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:11:19-47
-26            android:exported="true"
-26-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:11:88-111
-27            android:screenOrientation="unspecified" >
-27-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:11:48-87
-28            <intent-filter>
-28-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:12:13-15:29
-29                <action android:name="android.intent.action.MAIN" />
-29-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:13:17-69
-29-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:13:25-66
-30
-31                <category android:name="android.intent.category.LAUNCHER" />
-31-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:14:17-77
-31-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:14:27-74
-32            </intent-filter>
-33        </activity>
-34    </application>
-35
-36</manifest>
+12    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+12-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:3:5-79
+12-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:3:22-76
+13    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+13-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:4:5-76
+13-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:4:22-73
+14    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+14-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:5:5-86
+14-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:5:22-83
+15
+16    <application
+16-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:6:5-21:19
+17        android:allowBackup="true"
+17-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:11:9-35
+18        android:debuggable="true"
+19        android:extractNativeLibs="false"
+20        android:icon="@mipmap/ic_launcher"
+20-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:8:9-43
+21        android:label="GoQuiz Adventure"
+21-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:7:9-41
+22        android:largeHeap="true"
+22-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:13:9-33
+23        android:resizeableActivity="true"
+23-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:10:9-42
+24        android:roundIcon="@mipmap/ic_launcher"
+24-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:9:9-48
+25        android:supportsRtl="true"
+25-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:12:9-35
+26        android:theme="@style/AppTheme"
+26-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:6:18-49
+27        android:usesCleartextTraffic="true" >
+27-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:14:9-44
+28        <activity
+28-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:15:9-20:20
+29            android:name="goquiz.MainActivity"
+29-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:15:19-47
+30            android:exported="true"
+30-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:15:88-111
+31            android:screenOrientation="unspecified" >
+31-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:15:48-87
+32            <intent-filter>
+32-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:16:13-19:29
+33                <action android:name="android.intent.action.MAIN" />
+33-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:17:17-69
+33-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:17:25-66
+34
+35                <category android:name="android.intent.category.LAUNCHER" />
+35-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:18:17-77
+35-->C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\AndroidManifest.xml:18:27-74
+36            </intent-filter>
+37        </activity>
+38    </application>
+39
+40</manifest>

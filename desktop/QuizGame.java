@@ -1,4 +1,6 @@
 import java.awt.*;
+import java.awt.event.*;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.util.ArrayList;
@@ -14,6 +16,7 @@ import javax.imageio.ImageIO;
 import javax.sound.sampled.*;
 import javax.swing.*;
 import javax.swing.border.AbstractBorder;
+import javax.swing.plaf.basic.BasicSliderUI;
 
 public class QuizGame extends JFrame {
 
@@ -21,7 +24,13 @@ public class QuizGame extends JFrame {
     // GAME SETTINGS / PROGRESS
     // =========================
     private String difficulty = "Medium";
-    private boolean soundEnabled = true;
+    private static volatile boolean soundEnabled = true;
+    private static volatile int masterVolumePercent = 80;
+    private static final File SETTINGS_FILE = new File("game_settings.properties");
+
+    private TransitionRootPanel transitionRootPanel;
+    private AlphaPanel currentQuizCenterPanel;
+    private javax.swing.Timer quizFadeTimer = null;
 
     private int score = 0;
     private int hearts = 3;
@@ -164,6 +173,10 @@ public class QuizGame extends JFrame {
         setGlassPane(damageFlashPanel);
         damageFlashPanel.setVisible(true);
 
+        transitionRootPanel = new TransitionRootPanel();
+        setContentPane(transitionRootPanel);
+
+        loadSettings();
         initializeProgress();
         loadStudentAccounts();
         loadBackground();
@@ -227,6 +240,124 @@ public class QuizGame extends JFrame {
                 } catch (IOException ignored) {}
             }
         }
+    }
+
+    private BufferedImage cachedTitleImage = null;
+
+    private BufferedImage loadTitleImage() {
+        if (cachedTitleImage != null) {
+            return cachedTitleImage;
+        }
+        File[] candidates = new File[]{
+                new File("app/src/main/assets/images/Title.png"),
+                new File("images/Title.png")
+        };
+        for (File file : candidates) {
+            if (file.exists()) {
+                try {
+                    BufferedImage raw = ImageIO.read(file);
+                    if (raw != null) {
+                        int width = raw.getWidth();
+                        int height = raw.getHeight();
+                        int top = 0, bottom = height - 1, left = 0, right = width - 1;
+                        topLoop:
+                        for (int y = 0; y < height; y++) {
+                            for (int x = 0; x < width; x += 4) {
+                                if (((raw.getRGB(x, y) >> 24) & 0xff) > 10) {
+                                    top = Math.max(0, y - 4);
+                                    break topLoop;
+                                }
+                            }
+                        }
+                        bottomLoop:
+                        for (int y = height - 1; y >= 0; y--) {
+                            for (int x = 0; x < width; x += 4) {
+                                if (((raw.getRGB(x, y) >> 24) & 0xff) > 10) {
+                                    bottom = Math.min(height - 1, y + 4);
+                                    break bottomLoop;
+                                }
+                            }
+                        }
+                        leftLoop:
+                        for (int x = 0; x < width; x++) {
+                            for (int y = top; y <= bottom; y += 4) {
+                                if (((raw.getRGB(x, y) >> 24) & 0xff) > 10) {
+                                    left = Math.max(0, x - 4);
+                                    break leftLoop;
+                                }
+                            }
+                        }
+                        rightLoop:
+                        for (int x = width - 1; x >= 0; x--) {
+                            for (int y = top; y <= bottom; y += 4) {
+                                if (((raw.getRGB(x, y) >> 24) & 0xff) > 10) {
+                                    right = Math.min(width - 1, x + 4);
+                                    break rightLoop;
+                                }
+                            }
+                        }
+                        int cropW = Math.max(1, right - left + 1);
+                        int cropH = Math.max(1, bottom - top + 1);
+                        cachedTitleImage = raw.getSubimage(left, top, cropW, cropH);
+                        return cachedTitleImage;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        return null;
+    }
+
+    private ImageIcon getScaledTitleIcon(int maxW, int maxH) {
+        BufferedImage img = loadTitleImage();
+        if (img == null) return null;
+        int origW = img.getWidth();
+        int origH = img.getHeight();
+        double scale = Math.min((double) maxW / origW, (double) maxH / origH);
+        int targetW = Math.max(1, (int) Math.round(origW * scale));
+        int targetH = Math.max(1, (int) Math.round(origH * scale));
+        Image scaled = img.getScaledInstance(targetW, targetH, Image.SCALE_SMOOTH);
+        return new ImageIcon(scaled);
+    }
+
+    private final Map<String, BufferedImage> frameImageCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private BufferedImage loadFrameImage(String frameName) {
+        if (frameName == null || frameName.trim().isEmpty()) {
+            return background;
+        }
+        String gender = getGenderFolder();
+        String cacheKey = gender + "/" + frameName;
+        if (frameImageCache.containsKey(cacheKey)) {
+            return frameImageCache.get(cacheKey);
+        }
+
+        File[] candidates = new File[]{
+                new File("app/src/main/assets/images/" + gender + "/" + frameName),
+                new File("images/" + gender + "/" + frameName),
+                new File("../app/src/main/assets/images/" + gender + "/" + frameName),
+                new File("../images/" + gender + "/" + frameName),
+                new File("app/src/main/assets/images/Boy/" + frameName),
+                new File("images/Boy/" + frameName),
+                new File("../app/src/main/assets/images/Boy/" + frameName),
+                new File("../images/Boy/" + frameName),
+                new File("app/src/main/assets/images/" + frameName),
+                new File("images/" + frameName),
+                new File("../app/src/main/assets/images/" + frameName),
+                new File("../images/" + frameName)
+        };
+
+        for (File file : candidates) {
+            if (file.exists()) {
+                try {
+                    BufferedImage img = ImageIO.read(file);
+                    if (img != null) {
+                        frameImageCache.put(cacheKey, img);
+                        return img;
+                    }
+                } catch (IOException ignored) {}
+            }
+        }
+        return background;
     }
 
     // =========================
@@ -1460,111 +1591,529 @@ public class QuizGame extends JFrame {
 
         mainPanel = panel;
 
-        setContentPane(mainPanel);
-
-        revalidate();
-        repaint();
+        if (transitionRootPanel != null) {
+            transitionRootPanel.transitionTo(panel);
+        } else {
+            setContentPane(mainPanel);
+            revalidate();
+            repaint();
+        }
     }
 
     // =========================
-    // BACKGROUND PANEL
+    // BACKGROUND PANEL (INTERACTIVE FOR UNEQUAL SCREEN RATIOS & SIZES)
     // =========================
-    private JPanel createBackgroundPanel() {
+    public enum DesktopCameraMode {
+        FOLLOW_STORY,   // 🎬 STORY: Camera dynamically follows characters, combat & story actions
+        FREE_PAN,       // 🖐 PAN: Interactive free manual dragging & zooming
+        FIT_LETTERBOX   // ⛶ FIT: Full untouched artwork letterbox (100% visible)
+    }
 
-        return new BackgroundPanel();
+    private static volatile DesktopCameraMode desktopCameraMode = DesktopCameraMode.FOLLOW_STORY;
+    private static volatile double desktopZoomScale = 1.04;
+    private static volatile double desktopPanX = 0.40;
+    private static volatile double desktopPanY = 0.0;
+    private static volatile double desktopDriftX = 0.0;
+    private static volatile double desktopDriftY = 0.0;
+    private static volatile long desktopLastTouchTime = 0;
+    private static final List<BackgroundPanel> activeDesktopPanels = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private static volatile BackgroundPanel currentQuizPanel = null;
+    private static javax.swing.Timer desktopDriftTimer = null;
+
+    private static void cycleDesktopCameraMode() {
+        switch (desktopCameraMode) {
+            case FOLLOW_STORY:
+                desktopCameraMode = DesktopCameraMode.FREE_PAN;
+                break;
+            case FREE_PAN:
+                desktopCameraMode = DesktopCameraMode.FIT_LETTERBOX;
+                break;
+            case FIT_LETTERBOX:
+            default:
+                desktopCameraMode = DesktopCameraMode.FOLLOW_STORY;
+                desktopPanX = 0.40;
+                desktopZoomScale = 1.04;
+                desktopPanY = 0.0;
+                break;
+        }
+    }
+
+    private static String getDesktopCameraBadgeText() {
+        switch (desktopCameraMode) {
+            case FOLLOW_STORY:
+                return "🎬 STORY";
+            case FREE_PAN:
+                return "🖐 PAN";
+            case FIT_LETTERBOX:
+            default:
+                return "⛶ FIT";
+        }
+    }
+
+    private static String getDesktopCameraDisplayName() {
+        switch (desktopCameraMode) {
+            case FOLLOW_STORY:
+                return "Follow Story 🎬";
+            case FREE_PAN:
+                return "Free Pan 🖐";
+            case FIT_LETTERBOX:
+            default:
+                return "Fit Screen ⛶";
+        }
+    }
+
+    private static void ensureDesktopDriftTimer() {
+        if (desktopDriftTimer == null) {
+            desktopDriftTimer = new javax.swing.Timer(33, e -> {
+                long now = System.currentTimeMillis();
+                if (desktopCameraMode == DesktopCameraMode.FOLLOW_STORY && now - desktopLastTouchTime > 2200) {
+                    double t = (now % 60000L) / 1000.0;
+                    double targetDriftX = Math.sin(t * 0.35) * 0.12;
+                    double targetDriftY = Math.cos(t * 0.25) * 0.07;
+                    desktopDriftX += (targetDriftX - desktopDriftX) * 0.04;
+                    desktopDriftY += (targetDriftY - desktopDriftY) * 0.04;
+                    for (BackgroundPanel p : activeDesktopPanels) {
+                        p.repaint();
+                    }
+                } else if (Math.abs(desktopDriftX) > 0.001 || Math.abs(desktopDriftY) > 0.001) {
+                    desktopDriftX *= 0.90;
+                    desktopDriftY *= 0.90;
+                    for (BackgroundPanel p : activeDesktopPanels) {
+                        p.repaint();
+                    }
+                }
+            });
+            desktopDriftTimer.start();
+        }
+    }
+
+    private BackgroundPanel createBackgroundPanel() {
+        return createBackgroundPanel((String) null);
+    }
+
+    private BackgroundPanel createBackgroundPanel(String frameName) {
+        return new BackgroundPanel(frameName);
     }
 
     private class BackgroundPanel extends JPanel {
+        private Point lastDragPoint = null;
+        private BufferedImage panelImage = null;
+        private String currentFrameName = null;
 
         BackgroundPanel() {
+            this(null);
+        }
 
+        BackgroundPanel(String frameName) {
             setOpaque(false);
+            this.currentFrameName = frameName;
+            if (frameName != null) {
+                this.panelImage = loadFrameImage(frameName);
+            }
+            ensureDesktopDriftTimer();
+            activeDesktopPanels.add(this);
+
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    lastDragPoint = e.getPoint();
+                    desktopLastTouchTime = System.currentTimeMillis();
+                }
+
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    desktopLastTouchTime = System.currentTimeMillis();
+                    int badgeW = 76, badgeH = 24;
+                    int badgeX = getWidth() - badgeW - 14, badgeY = 12;
+                    if (e.getX() >= badgeX && e.getX() <= badgeX + badgeW && e.getY() >= badgeY && e.getY() <= badgeY + badgeH) {
+                        cycleDesktopCameraMode();
+                        for (BackgroundPanel p : activeDesktopPanels) p.repaint();
+                        return;
+                    }
+
+                    if (e.getClickCount() == 2) {
+                        if (desktopZoomScale > 1.08 || Math.abs(desktopPanX - 0.40) > 0.05) {
+                            desktopZoomScale = 1.04;
+                            desktopPanX = 0.40;
+                            desktopPanY = 0.0;
+                        } else {
+                            cycleDesktopCameraMode();
+                        }
+                        for (BackgroundPanel p : activeDesktopPanels) p.repaint();
+                    }
+                }
+            });
+
+            addMouseMotionListener(new MouseMotionAdapter() {
+                @Override
+                public void mouseDragged(MouseEvent e) {
+                    desktopLastTouchTime = System.currentTimeMillis();
+                    if (lastDragPoint != null && getWidth() > 0 && getHeight() > 0) {
+                        int dx = e.getX() - lastDragPoint.x;
+                        int dy = e.getY() - lastDragPoint.y;
+                        desktopPanX += (dx / (double) getWidth()) * 2.2;
+                        desktopPanY += (dy / (double) getHeight()) * 2.2;
+                        desktopPanX = Math.max(-1.0, Math.min(1.0, desktopPanX));
+                        desktopPanY = Math.max(-1.0, Math.min(1.0, desktopPanY));
+                        lastDragPoint = e.getPoint();
+                        for (BackgroundPanel p : activeDesktopPanels) p.repaint();
+                    }
+                }
+            });
+
+            addMouseWheelListener(new MouseWheelListener() {
+                @Override
+                public void mouseWheelMoved(MouseWheelEvent e) {
+                    desktopLastTouchTime = System.currentTimeMillis();
+                    desktopZoomScale = Math.max(1.0, Math.min(3.0, desktopZoomScale - e.getPreciseWheelRotation() * 0.12));
+                    for (BackgroundPanel p : activeDesktopPanels) p.repaint();
+                }
+            });
+        }
+
+        private BufferedImage previousPanelImage = null;
+        private float frameCrossfade = 1.0f;
+        private javax.swing.Timer frameFadeTimer = null;
+
+        public void setFrameImage(String frameName) {
+            this.currentFrameName = frameName;
+            BufferedImage nextImg = (frameName != null) ? loadFrameImage(frameName) : null;
+            if (this.panelImage != null && nextImg != null && this.panelImage != nextImg) {
+                this.previousPanelImage = this.panelImage;
+                this.panelImage = nextImg;
+                this.frameCrossfade = 0.0f;
+                if (frameFadeTimer != null && frameFadeTimer.isRunning()) {
+                    frameFadeTimer.stop();
+                }
+                long startTime = System.currentTimeMillis();
+                int duration = 160;
+                frameFadeTimer = new javax.swing.Timer(16, e -> {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    float progress = Math.min(1.0f, (float) elapsed / duration);
+                    frameCrossfade = (float) Math.sin(progress * Math.PI / 2.0);
+                    if (progress >= 1.0f) {
+                        frameCrossfade = 1.0f;
+                        ((javax.swing.Timer) e.getSource()).stop();
+                        previousPanelImage = null;
+                    }
+                    repaint();
+                });
+                frameFadeTimer.start();
+            } else {
+                this.panelImage = nextImg;
+                this.previousPanelImage = null;
+                this.frameCrossfade = 1.0f;
+                repaint();
+            }
+        }
+
+        private void drawScaledBackground(Graphics2D g2, BufferedImage img) {
+            if (img == null) return;
+            double sx = getWidth() / (double) img.getWidth();
+            double sy = getHeight() / (double) img.getHeight();
+            double scale;
+            int x, y, w, h;
+
+            if (desktopCameraMode == DesktopCameraMode.FIT_LETTERBOX) {
+                scale = Math.min(sx, sy) * desktopZoomScale;
+                w = Math.max(1, (int) (img.getWidth() * scale));
+                h = Math.max(1, (int) (img.getHeight() * scale));
+                int maxOverflowX = Math.max(0, w - getWidth());
+                int maxOverflowY = Math.max(0, h - getHeight());
+                x = (getWidth() - w) / 2 + (int) (desktopPanX * (maxOverflowX / 2.0));
+                y = (getHeight() - h) / 2 + (int) (desktopPanY * (maxOverflowY / 2.0));
+            } else {
+                scale = Math.max(sx, sy) * desktopZoomScale;
+                w = Math.max(1, (int) (img.getWidth() * scale));
+                h = Math.max(1, (int) (img.getHeight() * scale));
+                int maxOverflowX = Math.max(0, w - getWidth());
+                int maxOverflowY = Math.max(0, h - getHeight());
+                double combinedX = (desktopCameraMode == DesktopCameraMode.FOLLOW_STORY)
+                        ? Math.max(-1.0, Math.min(1.0, desktopPanX + desktopDriftX))
+                        : Math.max(-1.0, Math.min(1.0, desktopPanX));
+                double combinedY = (desktopCameraMode == DesktopCameraMode.FOLLOW_STORY)
+                        ? Math.max(-1.0, Math.min(1.0, desktopPanY + desktopDriftY))
+                        : Math.max(-1.0, Math.min(1.0, desktopPanY));
+                x = (getWidth() - w) / 2 + (int) (combinedX * (maxOverflowX / 2.0));
+                y = (getHeight() - h) / 2 + (int) (combinedY * (maxOverflowY / 2.0));
+            }
+
+            g2.drawImage(img, x, y, w, h, this);
         }
 
         @Override
         protected void paintComponent(Graphics g) {
-
             super.paintComponent(g);
 
-            Graphics2D g2 =
-                    (Graphics2D) g.create();
-
+            Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(
                     RenderingHints.KEY_INTERPOLATION,
                     RenderingHints.VALUE_INTERPOLATION_BILINEAR
             );
 
-            if (background != null) {
-
-                double sx =
-                        getWidth()
-                                / (double) background.getWidth();
-
-                double sy =
-                        getHeight()
-                                / (double) background.getHeight();
-
-                double scale =
-                        Math.max(sx, sy);
-
-                int w =
-                        Math.max(
-                                1,
-                                (int)
-                                        (background.getWidth()
-                                                * scale)
-                        );
-
-                int h =
-                        Math.max(
-                                1,
-                                (int)
-                                        (background.getHeight()
-                                                * scale)
-                        );
-
-                int x =
-                        (getWidth() - w) / 2;
-
-                int y =
-                        (getHeight() - h) / 2;
-
-                g2.drawImage(
-                        background,
-                        x,
-                        y,
-                        w,
-                        h,
-                        this
-                );
-
+            BufferedImage img = (panelImage != null) ? panelImage : background;
+            if (img != null) {
+                if (frameCrossfade < 0.999f && previousPanelImage != null) {
+                    float prevAlpha = Math.max(0.0f, 1.0f - frameCrossfade);
+                    if (prevAlpha > 0.01f) {
+                        Graphics2D gPrev = (Graphics2D) g2.create();
+                        gPrev.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, prevAlpha));
+                        drawScaledBackground(gPrev, previousPanelImage);
+                        gPrev.dispose();
+                    }
+                    float curAlpha = Math.min(1.0f, frameCrossfade);
+                    Graphics2D gCur = (Graphics2D) g2.create();
+                    gCur.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, curAlpha));
+                    drawScaledBackground(gCur, img);
+                    gCur.dispose();
+                } else {
+                    drawScaledBackground(g2, img);
+                }
             } else {
-
-                g2.setColor(
-                        new Color(9, 15, 24)
-                );
-
-                g2.fillRect(
-                        0,
-                        0,
-                        getWidth(),
-                        getHeight()
-                );
+                g2.setColor(new Color(9, 15, 24));
+                g2.fillRect(0, 0, getWidth(), getHeight());
             }
 
-            g2.setColor(
-                    new Color(0, 0, 0, 45)
-            );
+            // Subtle gentle tint overlay
+            g2.setColor(new Color(0, 0, 0, 45));
+            g2.fillRect(0, 0, getWidth(), getHeight());
 
-            g2.fillRect(
-                    0,
-                    0,
-                    getWidth(),
-                    getHeight()
-            );
+            // Discrete Interactive Framing HUD indicator (Top-Right)
+            String modeText = getDesktopCameraBadgeText();
+            g2.setFont(new Font("SansSerif", Font.BOLD, 11));
+            FontMetrics fm = g2.getFontMetrics();
+            int badgeW = fm.stringWidth(modeText) + 20;
+            int badgeH = 22;
+            int badgeX = getWidth() - badgeW - 14;
+            int badgeY = 12;
+
+            g2.setColor(new Color(20, 16, 12, 190));
+            g2.fillRoundRect(badgeX, badgeY, badgeW, badgeH, 12, 12);
+            g2.setColor(GOLD);
+            g2.drawRoundRect(badgeX, badgeY, badgeW, badgeH, 12, 12);
+            g2.setColor(GOLD_LIGHT);
+            g2.drawString(modeText, badgeX + 10, badgeY + 15);
 
             g2.dispose();
         }
+    }
+
+    // =========================
+    // STORY CINEMATICS SYSTEM
+    // =========================
+    private static final String[] LEVEL_INTRO_FRAMES = {
+        "Frame1.jpg", "Frame2.jpg", "Frame3.jpg", "Frame4.jpg", "Frame5.jpg", "Frame6.jpg", "Frame7.jpg"
+    };
+
+    private static final String[] LEVEL_INTRO_CAPTIONS = {
+        "The brave adventurer approaches the ancient dungeon gates...",
+        "Descending into the mysterious subterranean corridors...",
+        "Torchlight flickers through the ancient stone chamber...",
+        "A colossal beast awakens from the depths of the shadows...",
+        "The beast roars with blazing fury...",
+        "Drawing the enchanted blade for combat...",
+        "The battle begins! Answer wisely to defeat the beast!"
+    };
+
+    private static final String[] VICTORY_FRAMES = {
+        "Frame7.jpg", "Frame8.jpg", "Frame9.jpg", "Frame15.jpg", "Frame16.jpg", "Frame17.jpg"
+    };
+
+    private static final String[] VICTORY_CAPTIONS = {
+        "The brave hero confronts the dreadful dungeon titan!",
+        "Drawing on inner power, the hero leaps into battle!",
+        "A devastating strike connects with brilliant sparks!",
+        "The colossal beast collapses in total defeat!",
+        "The hero sheathes the enchanted blade, victorious!",
+        "Level cleared! Triumph echoes through the dungeon!"
+    };
+
+    private static final String[] COUNTER_ATTACK_VICTORY_FRAMES = {
+        "Frame10Alt.jpg", "Frame8.jpg", "Frame9.jpg", "Frame15.jpg", "Frame16.jpg", "Frame17.jpg"
+    };
+
+    private static final String[] COUNTER_ATTACK_VICTORY_CAPTIONS = {
+        "Withstanding the beast's attack, the hero recovers!",
+        "Summoning heroic resolve, the hero leaps into the strike!",
+        "The final blade slash cleaves through the darkness!",
+        "The colossal beast collapses in total defeat!",
+        "The hero sheathes the blade, victorious!",
+        "Level cleared! Triumph echoes through the dungeon!"
+    };
+
+    private static final String[] GAMEOVER_FRAMES = {
+        "Frame11Alt.jpg", "Frame12Alt.jpg", "Frame13Alt.jpg", "Frame14Alt.jpg"
+    };
+
+    private static final String[] GAMEOVER_CAPTIONS = {
+        "The beast unleashes a crushing, unstoppable blow...",
+        "The adventurer stumbles under overwhelming power...",
+        "Strength fades as defeat grips the subterranean depths...",
+        "GAME OVER • Darkness swallows the chamber..."
+    };
+
+    private void showStoryIntroCinematic(Runnable onFinished) {
+        showCinematicSequence(
+                LEVEL_INTRO_FRAMES,
+                LEVEL_INTRO_CAPTIONS,
+                "LEVEL " + currentLevel + " • " + selectedLanguage.toUpperCase(),
+                onFinished
+        );
+    }
+
+    private void showVictoryCinematic(Runnable onFinished) {
+        showCinematicSequence(
+                VICTORY_FRAMES,
+                VICTORY_CAPTIONS,
+                "★ VICTORY! • LEVEL " + currentLevel + " CLEARED",
+                onFinished
+        );
+    }
+
+    private void showCounterAttackVictoryCinematic(Runnable onFinished) {
+        showCinematicSequence(
+                COUNTER_ATTACK_VICTORY_FRAMES,
+                COUNTER_ATTACK_VICTORY_CAPTIONS,
+                "★ VICTORY! • LEVEL " + currentLevel + " CLEARED",
+                onFinished
+        );
+    }
+
+    private void showGameOverCinematic(Runnable onFinished) {
+        showCinematicSequence(
+                GAMEOVER_FRAMES,
+                GAMEOVER_CAPTIONS,
+                "☠ DEFEAT • REST AND TRY AGAIN",
+                onFinished
+        );
+    }
+
+    private void attachAdvanceClick(Component c, MouseListener listener, JButton skip) {
+        if (c == null || c == skip) return;
+        c.addMouseListener(listener);
+        if (c instanceof Container) {
+            for (Component child : ((Container) c).getComponents()) {
+                attachAdvanceClick(child, listener, skip);
+            }
+        }
+    }
+
+    private void showCinematicSequence(String[] frames, String[] captions, String titleTag, Runnable onFinished) {
+        if (frames == null || frames.length == 0) {
+            if (onFinished != null) onFinished.run();
+            return;
+        }
+
+        final int[] currentIndex = new int[]{0};
+        final boolean[] finished = new boolean[]{false};
+
+        BackgroundPanel panel = createBackgroundPanel(frames[0]);
+        panel.setLayout(new BorderLayout());
+        applyFrameCameraFocus(frames[0]);
+
+        // Header bar with Title Tag and SKIP button
+        JPanel topBar = new JPanel(new BorderLayout());
+        topBar.setOpaque(false);
+        topBar.setBorder(BorderFactory.createEmptyBorder(16, 24, 16, 24));
+
+        JLabel titleLabel = new JLabel(titleTag);
+        titleLabel.setFont(pixelFont(Font.BOLD, 15));
+        titleLabel.setForeground(GOLD_LIGHT);
+        topBar.add(titleLabel, BorderLayout.WEST);
+
+        JButton skipBtn = createCompactFantasyButton("SKIP ⏩", 120, 36);
+        skipBtn.setBackground(new Color(32, 22, 14, 200));
+        skipBtn.setForeground(GOLD_LIGHT);
+        topBar.add(skipBtn, BorderLayout.EAST);
+        panel.add(topBar, BorderLayout.NORTH);
+
+        // Center clickable area to advance
+        JPanel centerArea = new JPanel();
+        centerArea.setOpaque(false);
+        panel.add(centerArea, BorderLayout.CENTER);
+
+        // Bottom story captions card
+        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        bottomBar.setOpaque(false);
+        bottomBar.setBorder(BorderFactory.createEmptyBorder(0, 30, 26, 30));
+
+        FantasyPanel storyCard = new FantasyPanel(14, 28, 18, new Color(12, 18, 28, 175), new Color(231, 160, 39, 140));
+        storyCard.setLayout(new BoxLayout(storyCard, BoxLayout.Y_AXIS));
+        storyCard.setBorder(BorderFactory.createEmptyBorder(14, 28, 14, 28));
+
+        JLabel captionLabel = new JLabel(captions.length > 0 ? captions[0] : "", SwingConstants.CENTER);
+        captionLabel.setFont(pixelFont(Font.BOLD, 16));
+        captionLabel.setForeground(TEXT);
+        captionLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        StringBuilder initialDots = new StringBuilder();
+        for (int i = 0; i < frames.length; i++) initialDots.append(i == 0 ? "● " : "○ ");
+        initialDots.append(" (Click to advance)");
+
+        JLabel progressLabel = new JLabel(initialDots.toString(), SwingConstants.CENTER);
+        progressLabel.setFont(pixelFont(Font.PLAIN, 12));
+        progressLabel.setForeground(GOLD);
+        progressLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        storyCard.add(captionLabel);
+        storyCard.add(Box.createVerticalStrut(6));
+        storyCard.add(progressLabel);
+        bottomBar.add(storyCard);
+        panel.add(bottomBar, BorderLayout.SOUTH);
+
+        final javax.swing.Timer[] advanceTimer = new javax.swing.Timer[1];
+
+        final Runnable finishAction = () -> {
+            if (finished[0]) return;
+            finished[0] = true;
+            if (advanceTimer[0] != null) advanceTimer[0].stop();
+            applyFrameCameraFocus("Frame7.jpg");
+            if (onFinished != null) onFinished.run();
+        };
+
+        skipBtn.addActionListener(e -> finishAction.run());
+
+        final Runnable nextFrameAction = () -> {
+            if (finished[0]) return;
+            currentIndex[0]++;
+            if (currentIndex[0] >= frames.length) {
+                finishAction.run();
+                return;
+            }
+            int idx = currentIndex[0];
+            panel.setFrameImage(frames[idx]);
+            applyFrameCameraFocus(frames[idx]);
+
+            if (idx < captions.length) {
+                captionLabel.setText(captions[idx]);
+            }
+
+            StringBuilder dots = new StringBuilder();
+            for (int i = 0; i < frames.length; i++) {
+                dots.append(i == idx ? "● " : "○ ");
+            }
+            dots.append(" (Click to advance)");
+            progressLabel.setText(dots.toString());
+
+            if (advanceTimer[0] != null) {
+                advanceTimer[0].restart();
+            }
+        };
+
+        MouseAdapter advanceClick = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.getSource() != skipBtn) {
+                    nextFrameAction.run();
+                }
+            }
+        };
+        attachAdvanceClick(panel, advanceClick, skipBtn);
+
+        advanceTimer[0] = new javax.swing.Timer(3200, e -> nextFrameAction.run());
+        advanceTimer[0].start();
+
+        changeScreen(panel);
     }
 
     // =========================
@@ -1581,29 +2130,17 @@ public class QuizGame extends JFrame {
                 new BorderLayout()
         );
 
-        JLabel title =
-                new JLabel(
-                        "GOQUIZ ADVENTURE",
-                        SwingConstants.CENTER
-                );
-
-        title.setFont(
-                pixelFont(
-                        Font.BOLD,
-                        42
-                )
-        );
-
-        title.setForeground(TEXT);
-
-        title.setBorder(
-                BorderFactory.createEmptyBorder(
-                        35,
-                        0,
-                        0,
-                        0
-                )
-        );
+        ImageIcon titleIcon = getScaledTitleIcon(440, 210);
+        JLabel title;
+        if (titleIcon != null) {
+            title = new JLabel(titleIcon, SwingConstants.CENTER);
+            title.setBorder(BorderFactory.createEmptyBorder(20, 0, 5, 0));
+        } else {
+            title = new JLabel("GOQUIZ ADVENTURE", SwingConstants.CENTER);
+            title.setFont(pixelFont(Font.BOLD, 42));
+            title.setForeground(GOLD_LIGHT);
+            title.setBorder(BorderFactory.createEmptyBorder(35, 0, 0, 0));
+        }
 
         panel.add(
                 title,
@@ -1659,18 +2196,21 @@ public class QuizGame extends JFrame {
 
         JButton play =
                 createFantasyButton("PLAY");
+        if (play instanceof FantasyButton) {
+            ((FantasyButton) play).setFantasyStyle(new Color(116, 67, 18), GOLD_LIGHT, GOLD_LIGHT);
+        }
 
         JButton credits =
-                createFantasyButton("CREDITS");
+                createFantasyButton("CREDITS & VERSION");
 
         JButton badges =
-                createFantasyButton("BADGES");
+                createFantasyButton("BADGES & PROGRESS");
+
+        JButton leaderboard =
+                createFantasyButton("ONLINE LEADERBOARD");
 
         JButton settings =
                 createFantasyButton("SETTINGS");
-
-        JButton leaderboard =
-                createFantasyButton("LEADERBOARD");
 
         play.addActionListener(
                 e -> showDifficultySelection()
@@ -1811,15 +2351,30 @@ public class QuizGame extends JFrame {
         controlsPanel.setLayout(new BoxLayout(controlsPanel, BoxLayout.Y_AXIS));
         controlsPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // Action Buttons Row: Host Server, Auto-Connect, Connect & Refresh
-        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
+        // Network Info Banner: Shows PC's own LAN IP so users can connect from mobile or other PCs
+        List<String> candidateIps = getAllCandidateIps();
+        String myLocalIp = !candidateIps.isEmpty() ? candidateIps.get(0) : getLocalIpAddress();
+        boolean serverRunning = (embeddedServer != null && embeddedServer.isRunning());
+        String ipExtra = candidateIps.size() > 1 ? "  •  [Other IPs: " + String.join(", ", candidateIps.subList(1, candidateIps.size())) + "]" : "";
+        JLabel ipBanner = new JLabel("🖥 Your PC IP: " + myLocalIp + ipExtra + (serverRunning ? "  •  [QuizServer Active on port " + onlineServerPort + "]" : "  •  [QuizServer Stopped]"), SwingConstants.CENTER);
+        ipBanner.setFont(pixelFont(Font.BOLD, 13));
+        ipBanner.setForeground(new Color(90, 220, 120));
+        ipBanner.setAlignmentX(Component.CENTER_ALIGNMENT);
+        controlsPanel.add(ipBanner);
+        controlsPanel.add(Box.createVerticalStrut(8));
+
+        // Action Buttons Row: Host Server, Auto-Discover, Auto-Connect, Connect & Refresh
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
         btnRow.setOpaque(false);
 
-        boolean serverRunning = (embeddedServer != null && embeddedServer.isRunning());
-        JButton hostBtn = createCompactFantasyButton(serverRunning ? "STOP LOCAL SERVER" : "HOST LOCAL SERVER", 220, 42);
+        JButton hostBtn = createCompactFantasyButton(serverRunning ? "STOP LOCAL SERVER" : "HOST LOCAL SERVER", 200, 42);
         if (serverRunning) hostBtn.setBackground(new Color(110, 35, 35));
 
-        JButton autoConnectBtn = createCompactFantasyButton(onlineAutoConnect ? "AUTO-CONNECT: ON ✓" : "AUTO-CONNECT: OFF ✕", 210, 42);
+        JButton autoDiscoverBtn = createCompactFantasyButton("AUTO-DISCOVER 🔍", 180, 42);
+        autoDiscoverBtn.setBackground(new Color(24, 60, 95));
+        autoDiscoverBtn.setForeground(GOLD_LIGHT);
+
+        JButton autoConnectBtn = createCompactFantasyButton(onlineAutoConnect ? "AUTO-CONNECT: ON ✓" : "AUTO-CONNECT: OFF ✕", 190, 42);
         if (onlineAutoConnect) {
             autoConnectBtn.setBackground(new Color(28, 75, 45));
             autoConnectBtn.setForeground(new Color(90, 220, 120));
@@ -1828,17 +2383,18 @@ public class QuizGame extends JFrame {
             autoConnectBtn.setForeground(MUTED);
         }
 
-        JButton connect = createCompactFantasyButton("CONNECT & REFRESH ↺", 230, 42);
+        JButton connect = createCompactFantasyButton("CONNECT & REFRESH ↺", 210, 42);
         connect.setBackground(new Color(116, 67, 18));
         connect.setForeground(GOLD_LIGHT);
 
         btnRow.add(hostBtn);
+        btnRow.add(autoDiscoverBtn);
         btnRow.add(autoConnectBtn);
         btnRow.add(connect);
         controlsPanel.add(btnRow);
         controlsPanel.add(Box.createVerticalStrut(8));
 
-        // Inputs Row: Server IP and Port
+        // Inputs Row: Server IP, Port, and Firewall Fix button
         JPanel inputRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
         inputRow.setOpaque(false);
 
@@ -1858,10 +2414,17 @@ public class QuizGame extends JFrame {
         styleFantasyInput(port);
         port.setPreferredSize(new Dimension(90, 36));
 
+        JButton firewallBtn = createCompactFantasyButton("🛡 FIREWALL FIX", 160, 36);
+        firewallBtn.setBackground(new Color(60, 40, 70));
+        firewallBtn.setForeground(GOLD_LIGHT);
+        firewallBtn.setToolTipText("Allow GoQuiz ports 5050 and 5052 through Windows Defender Firewall");
+        firewallBtn.addActionListener(e -> fixWindowsFirewall());
+
         inputRow.add(hostL);
         inputRow.add(host);
         inputRow.add(portL);
         inputRow.add(port);
+        inputRow.add(firewallBtn);
         controlsPanel.add(inputRow);
 
         topHeader.add(controlsPanel);
@@ -1914,13 +2477,52 @@ public class QuizGame extends JFrame {
                 stopEmbeddedLeaderboardServer();
                 hostBtn.setText("HOST LOCAL SERVER");
                 hostBtn.setBackground(new Color(26, 36, 48));
+                ipBanner.setText("🖥 Your PC IP: " + getLocalIpAddress() + "  •  [QuizServer Stopped]");
+                ipBanner.setForeground(MUTED);
                 JOptionPane.showMessageDialog(this, "Local server stopped.", "Notice", JOptionPane.INFORMATION_MESSAGE);
             } else {
                 startEmbeddedLeaderboardServer();
                 hostBtn.setText("STOP LOCAL SERVER");
                 hostBtn.setBackground(new Color(110, 35, 35));
-                JOptionPane.showMessageDialog(this, "QuizServer is running on port " + onlineServerPort + "!\nOther devices on this Wi-Fi can connect.", "Notice", JOptionPane.INFORMATION_MESSAGE);
+                ipBanner.setText("🖥 Your PC IP: " + getLocalIpAddress() + "  •  [QuizServer Active on port " + onlineServerPort + "]");
+                ipBanner.setForeground(new Color(90, 220, 120));
+                JOptionPane.showMessageDialog(this,
+                        "QuizServer is running on port " + onlineServerPort + "!\n\n" +
+                        "Other devices on this Wi-Fi or Hotspot can connect using IP: " + getLocalIpAddress() + "\n\n" +
+                        "Tip: If your phone cannot connect, click '🛡 FIREWALL FIX' to allow incoming connections through Windows Defender Firewall.",
+                        "Leaderboard Server Active", JOptionPane.INFORMATION_MESSAGE);
             }
+        });
+
+        autoDiscoverBtn.addActionListener(e -> {
+            autoDiscoverBtn.setEnabled(false);
+            autoDiscoverBtn.setText("SEARCHING...");
+            statusLabel.setText("Scanning network for QuizServer...");
+            statusLabel.setForeground(GOLD_LIGHT);
+
+            new Thread(() -> {
+                int prt = onlineServerPort;
+                try { prt = Integer.parseInt(port.getText().trim()); } catch (Exception ignored) {}
+                final int finalPort = prt;
+                String discovered = discoverServerIp(finalPort);
+                SwingUtilities.invokeLater(() -> {
+                    autoDiscoverBtn.setEnabled(true);
+                    autoDiscoverBtn.setText("AUTO-DISCOVER 🔍");
+                    if (discovered != null) {
+                        host.setText(discovered);
+                        onlineServerHost = discovered;
+                        statusLabel.setText("Found server at " + discovered + "!");
+                        statusLabel.setForeground(new Color(90, 220, 120));
+                        executeOnlineLeaderboardFetch(discovered, finalPort, board, statusLabel, false);
+                    } else {
+                        statusLabel.setText("○ No QuizServer found on LAN");
+                        statusLabel.setForeground(new Color(255, 110, 110));
+                        JOptionPane.showMessageDialog(this,
+                                "No QuizServer found on this network or hotspot.\n\nTips:\n• If playing across devices, ensure both are on the same Wi-Fi or Hotspot.\n• If this PC is hosting, click 'HOST LOCAL SERVER'.\n• If mobile or another PC is hosting, you can enter its IP manually above.",
+                                "Discovery Result", JOptionPane.INFORMATION_MESSAGE);
+                    }
+                });
+            }, "QuizDesktopDiscovery").start();
         });
 
         autoConnectBtn.addActionListener(e -> {
@@ -1968,24 +2570,275 @@ public class QuizGame extends JFrame {
             onlineClient.leaderboardArea = board;
             onlineClient.statusLabel = statusLabel;
 
-            onlineClient.send("SCORE|" + cleanNet(studentName) + "|" + score);
+            final int uploadScore = getStudentBestScore();
+            if (studentName != null && !studentName.trim().isEmpty()) {
+                onlineClient.send("SCORE|" + cleanNet(studentName) + "|" + uploadScore);
+            }
             onlineClient.send("LEADERBOARD");
             board.setText("Loading leaderboard rankings...");
         } catch (Exception ex) {
             statusLabel.setText("○ OFFLINE (" + h + ":" + prt + ")");
             statusLabel.setForeground(new Color(255, 110, 110));
-            board.setText("Could not reach " + h + ":" + prt + ".\nMake sure QuizServer is running on this network.");
-            if (showErrors) {
+            board.setText("Could not reach " + h + ":" + prt + ".\nMake sure QuizServer is running on this network or hotspot.");
+
+            // Background auto-discovery fallback if initial host was default or unreachable
+            if (!showErrors) {
+                new Thread(() -> {
+                    String discovered = discoverServerIp(prt);
+                    if (discovered != null && !discovered.equals(h)) {
+                        SwingUtilities.invokeLater(() -> {
+                            executeOnlineLeaderboardFetch(discovered, prt, board, statusLabel, false);
+                        });
+                    }
+                }, "QuizDesktopAutoFallback").start();
+            } else {
                 JOptionPane.showMessageDialog(this,
-                        "Could not connect to the leaderboard server.\n" + ex.getMessage(),
+                        "Could not connect to the leaderboard server.\n" + ex.getMessage() + "\n\nTip: Click 'AUTO-DISCOVER 🔍' to find the server automatically.",
                         "Connection Failed", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
 
+    private int getStudentBestScore() {
+        if (studentName == null || studentName.trim().isEmpty()) return score;
+        File scoreFile = new File("student_scores.properties");
+        Properties p = new Properties();
+        if (scoreFile.exists()) {
+            try (FileInputStream in = new FileInputStream(scoreFile)) {
+                p.load(in);
+            } catch (Exception ignored) {}
+        }
+        int saved = 0;
+        try {
+            saved = Integer.parseInt(p.getProperty(studentName.trim().toLowerCase(), "0"));
+        } catch (Exception ignored) {}
+        int highest = Math.max(score, saved);
+        if (highest > saved) {
+            p.setProperty(studentName.trim().toLowerCase(), String.valueOf(highest));
+            try (FileOutputStream out = new FileOutputStream(scoreFile)) {
+                p.store(out, "GoQuiz Desktop Student Scores");
+            } catch (Exception ignored) {}
+        }
+        return highest;
+    }
+
     private void sendOnlineScore() {
+        if (studentName == null || studentName.trim().isEmpty()) return;
+        final int uploadScore = getStudentBestScore();
         if (onlineClient != null) {
-            onlineClient.send("SCORE|" + cleanNet(studentName) + "|" + score);
+            onlineClient.send("SCORE|" + cleanNet(studentName) + "|" + uploadScore);
+        } else {
+            // Push score in background even if Leaderboard screen was not opened
+            new Thread(() -> {
+                try (Socket s = new Socket()) {
+                    s.connect(new InetSocketAddress(onlineServerHost, onlineServerPort), 1000);
+                    BufferedWriter out = new BufferedWriter(new OutputStreamWriter(s.getOutputStream(), java.nio.charset.StandardCharsets.UTF_8));
+                    out.write("SCORE|" + cleanNet(studentName) + "|" + uploadScore);
+                    out.newLine();
+                    out.flush();
+                } catch (Exception ignored) {}
+            }, "QuizDesktopScoreSender").start();
+        }
+    }
+
+    static boolean isVirtualAdapter(String desc, NetworkInterface nif) {
+        if (nif != null && nif.isVirtual()) return true;
+        if (desc == null) return false;
+        return desc.contains("virtual")
+                || desc.contains("vbox")
+                || desc.contains("vmware")
+                || desc.contains("hyper-v")
+                || desc.contains("vethernet")
+                || desc.contains("host-only")
+                || desc.contains("wsl")
+                || desc.contains("docker")
+                || desc.contains("tailscale")
+                || desc.contains("zerotier")
+                || desc.contains("wireguard")
+                || desc.contains("tap")
+                || desc.contains("tun")
+                || desc.contains("vpn")
+                || desc.contains("pseudo")
+                || desc.contains("bluetooth")
+                || desc.contains("npcap");
+    }
+
+    static int rateInterface(NetworkInterface nif) {
+        try {
+            if (nif.isLoopback() || !nif.isUp()) return -200;
+            String desc = (nif.getName() + " " + nif.getDisplayName()).toLowerCase();
+            if (isVirtualAdapter(desc, nif)) return -100;
+            if (desc.contains("wi-fi") || desc.contains("wifi") || desc.contains("wlan") || desc.contains("wireless") || desc.contains("802.11")) return 100;
+            if (desc.contains("ethernet") || desc.contains("eth") || desc.contains("lan")) return 50;
+            return 10;
+        } catch (Exception e) {
+            return -200;
+        }
+    }
+
+    static List<String> getAllCandidateIps() {
+        List<String> list = new ArrayList<>();
+        try {
+            List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+            interfaces.sort((a, b) -> Integer.compare(rateInterface(b), rateInterface(a)));
+            for (NetworkInterface nif : interfaces) {
+                if (nif.isLoopback() || !nif.isUp()) continue;
+                String desc = (nif.getName() + " " + nif.getDisplayName()).toLowerCase();
+                if (isVirtualAdapter(desc, nif)) continue;
+                for (InetAddress addr : Collections.list(nif.getInetAddresses())) {
+                    if (!addr.isLoopbackAddress() && addr instanceof Inet4Address && !addr.isLinkLocalAddress()) {
+                        String ip = addr.getHostAddress();
+                        if (ip != null && !ip.startsWith("127.") && !ip.startsWith("169.254.") && !list.contains(ip)) {
+                            list.add(ip);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return list;
+    }
+
+    static String getLocalIpAddress() {
+        List<String> ips = getAllCandidateIps();
+        if (!ips.isEmpty()) {
+            return ips.get(0);
+        }
+        try {
+            for (NetworkInterface nif : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (nif.isLoopback() || !nif.isUp()) continue;
+                for (InetAddress addr : Collections.list(nif.getInetAddresses())) {
+                    if (!addr.isLoopbackAddress() && addr instanceof Inet4Address && !addr.isLinkLocalAddress()) {
+                        String ip = addr.getHostAddress();
+                        if (ip != null && !ip.startsWith("127.") && !ip.startsWith("169.254.")) {
+                            return ip;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return "127.0.0.1";
+    }
+
+    static boolean testServerConnection(String host, int port) {
+        if (host == null || host.isEmpty()) return false;
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress(host, port), 400);
+            BufferedWriter out = new BufferedWriter(new OutputStreamWriter(s.getOutputStream(), java.nio.charset.StandardCharsets.UTF_8));
+            BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+            out.write("LEADERBOARD");
+            out.newLine();
+            out.flush();
+            String resp = in.readLine();
+            return resp != null && resp.startsWith("BOARD");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    static String discoverServerIp(int targetPort) {
+        List<String> candidates = getAllCandidateIps();
+        if (candidates.isEmpty()) candidates.add(getLocalIpAddress());
+
+        // 1. Try UDP broadcast probe (port 5052)
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.setBroadcast(true);
+            socket.setSoTimeout(900);
+            byte[] probe = "GOQUIZ_DISCOVER_PROBE".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            try {
+                socket.send(new DatagramPacket(probe, probe.length, InetAddress.getByName("255.255.255.255"), 5052));
+            } catch (Exception ignored) {}
+            for (String ip : candidates) {
+                int lastDot = ip.lastIndexOf('.');
+                if (lastDot > 0) {
+                    try {
+                        String subnetBcast = ip.substring(0, lastDot + 1) + "255";
+                        socket.send(new DatagramPacket(probe, probe.length, InetAddress.getByName(subnetBcast), 5052));
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            byte[] buf = new byte[512];
+            DatagramPacket inPacket = new DatagramPacket(buf, buf.length);
+            socket.receive(inPacket);
+            String resp = new String(inPacket.getData(), 0, inPacket.getLength(), java.nio.charset.StandardCharsets.UTF_8).trim();
+            if (resp.startsWith("GOQUIZ_SERVER_ANNOUNCE")) {
+                return inPacket.getAddress().getHostAddress();
+            }
+        } catch (Exception ignored) {}
+
+        // 2. Smart Subnet / Hotspot Gateway scan across detected interfaces
+        for (String localIp : candidates) {
+            if (localIp == null || localIp.startsWith("127.")) continue;
+            int lastDot = localIp.lastIndexOf('.');
+            if (lastDot <= 0) continue;
+            String subnet = localIp.substring(0, lastDot + 1);
+            String gatewayIp = subnet + "1";
+
+            if (!gatewayIp.equals(localIp) && testServerConnection(gatewayIp, targetPort)) {
+                return gatewayIp;
+            }
+
+            if (testServerConnection("127.0.0.1", targetPort)) {
+                return "127.0.0.1";
+            }
+
+            List<String> priorityIps = new ArrayList<>();
+            for (int i = 2; i <= 65; i++) priorityIps.add(subnet + i);
+            for (int i = 100; i <= 165; i++) priorityIps.add(subnet + i);
+            for (int i = 66; i <= 99; i++) priorityIps.add(subnet + i);
+            for (int i = 166; i <= 254; i++) priorityIps.add(subnet + i);
+
+            final String[] foundIp = new String[1];
+            java.util.concurrent.ExecutorService scanner = java.util.concurrent.Executors.newFixedThreadPool(32);
+            for (String ip : priorityIps) {
+                if (ip.equals(localIp)) continue;
+                scanner.submit(() -> {
+                    if (foundIp[0] == null && testServerConnection(ip, targetPort)) {
+                        foundIp[0] = ip;
+                    }
+                });
+            }
+            scanner.shutdown();
+            try {
+                scanner.awaitTermination(1600, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (InterruptedException ignored) {}
+            if (foundIp[0] != null) return foundIp[0];
+        }
+
+        if (testServerConnection("127.0.0.1", targetPort)) {
+            return "127.0.0.1";
+        }
+        return null;
+    }
+
+    private void fixWindowsFirewall() {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (!os.contains("win")) {
+            JOptionPane.showMessageDialog(this, "Firewall fix is only needed on Windows systems.", "Notice", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Configure Windows Defender Firewall to allow GoQuiz?\n\n" +
+                "• This allows phones and other computers on Wi-Fi or Hotspot to connect.\n" +
+                "• Opens port 5050 (TCP) for Leaderboard and 5052 (UDP) for Auto-Discovery.\n" +
+                "• A standard Windows Administrator (UAC) prompt will appear.",
+                "Windows Defender Firewall Setup",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE);
+        if (confirm != JOptionPane.YES_OPTION) return;
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder("powershell", "-NoProfile", "-Command",
+                    "Start-Process cmd -ArgumentList '/c netsh advfirewall firewall add rule name=\"\"GoQuiz Leaderboard TCP (Port 5050)\"\" dir=in action=allow protocol=TCP localport=5050 profile=any & " +
+                    "netsh advfirewall firewall add rule name=\"\"GoQuiz Leaderboard UDP (Port 5052)\"\" dir=in action=allow protocol=UDP localport=5052 profile=any & " +
+                    "echo GoQuiz Windows Firewall rules configured successfully! & timeout /t 3' -Verb RunAs"
+            );
+            pb.start();
+            JOptionPane.showMessageDialog(this,
+                    "Windows Firewall setup launched!\n\nPlease click 'Yes' on the Windows Administrator prompt.\nOnce approved, phones can connect to this PC immediately.",
+                    "Firewall Setup", JOptionPane.INFORMATION_MESSAGE);
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "Failed to launch firewall setup: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -2203,9 +3056,18 @@ public class QuizGame extends JFrame {
                 BorderFactory.createEmptyBorder(28,58,28,58)
         ));
 
-        JLabel gameTitle=new JLabel("GOQUIZ ADVENTURE",SwingConstants.CENTER);
-        gameTitle.setFont(pixelFont(Font.BOLD,18));
-        gameTitle.setForeground(GOLD_LIGHT);
+        ImageIcon loginTitleIcon = getScaledTitleIcon(310, 105);
+        JComponent gameTitle;
+        if (loginTitleIcon != null) {
+            JLabel lbl = new JLabel(loginTitleIcon, SwingConstants.CENTER);
+            lbl.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+            gameTitle = lbl;
+        } else {
+            JLabel gtLabel = new JLabel("GOQUIZ ADVENTURE", SwingConstants.CENTER);
+            gtLabel.setFont(pixelFont(Font.BOLD, 18));
+            gtLabel.setForeground(GOLD_LIGHT);
+            gameTitle = gtLabel;
+        }
         gameTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         JLabel title=new JLabel("STUDENT LOGIN",SwingConstants.CENTER);
@@ -2311,7 +3173,7 @@ public class QuizGame extends JFrame {
 
         JButton button =
                 new FantasyButton(
-                        wrapHtml(language, 260)
+                        language
                 );
 
         button.setFont(
@@ -2320,6 +3182,9 @@ public class QuizGame extends JFrame {
                         24
                 )
         );
+
+        button.setHorizontalAlignment(SwingConstants.CENTER);
+        button.setVerticalAlignment(SwingConstants.CENTER);
 
         // Preferred size only; GridLayout will resize the button with the window.
         button.setPreferredSize(new Dimension(260, 120));
@@ -2569,12 +3434,16 @@ public class QuizGame extends JFrame {
             return;
         }
 
-        // Load ONLY this exact language + difficulty + game level.
+        // Load ONLY this exact language + difficulty + game level (5 questions per level, matching mobile)
         List<Question> sourceQuestions = difficultyLevels.get(level - 1);
-        questions.addAll(sourceQuestions);
-        Collections.shuffle(questions);
+        List<Question> pool = new ArrayList<>(sourceQuestions);
+        Collections.shuffle(pool);
+        int count = Math.min(5, pool.size());
+        for (int i = 0; i < count; i++) {
+            questions.add(pool.get(i));
+        }
 
-        showQuestion();
+        showStoryIntroCinematic(this::showQuestion);
     }
 
     // =========================
@@ -2663,13 +3532,15 @@ public class QuizGame extends JFrame {
         if (currentQuestion
                 >= questions.size()) {
 
-            completeCurrentLevel();
+            showVictoryCinematic(this::completeCurrentLevel);
 
             return;
         }
 
-        JPanel panel =
-                createBackgroundPanel();
+        BackgroundPanel panel =
+                createBackgroundPanel("Frame7.jpg");
+        currentQuizPanel = panel;
+        applyFrameCameraFocus("Frame7.jpg");
 
         panel.setLayout(
                 new BorderLayout()
@@ -2771,8 +3642,9 @@ public class QuizGame extends JFrame {
                 BorderLayout.NORTH
         );
 
-        JPanel center =
-                new JPanel();
+        AlphaPanel center =
+                new AlphaPanel();
+        currentQuizCenterPanel = center;
 
         center.setOpaque(false);
 
@@ -2896,6 +3768,7 @@ public class QuizGame extends JFrame {
         );
 
         changeScreen(panel);
+        animateQuestionEntrance(center);
     }
 
     // =========================
@@ -2916,79 +3789,65 @@ public class QuizGame extends JFrame {
             button.setEnabled(false);
         }
 
-        if (selected ==
-                q.answer) {
+        boolean isFinalQuestion = (currentQuestion == questions.size() - 1);
 
-            score +=
-                    getPoints();
-
+        if (selected == q.answer) {
+            score += getPoints();
             sendOnlineScore();
+            markCorrect(buttons[selected]);
 
-            markCorrect(
-                    buttons[selected]
-            );
-
-            javax.swing.Timer timer =
-                    new javax.swing.Timer(
-                            550,
-                            e -> {
-
-                                currentQuestion++;
-
-                                showQuestion();
-                            }
-                    );
-
-            timer.setRepeats(false);
-
-            timer.start();
-
+            // Brief pause to register correct answer, then fade questions & buttons transparent for battle action
+            javax.swing.Timer fadeTimer = new javax.swing.Timer(240, ev -> {
+                ((javax.swing.Timer) ev.getSource()).stop();
+                fadeQuizControls(0.16f, 160, () -> {
+                    if (isFinalQuestion) {
+                        playAttackStrikeAnimation(() -> {
+                            currentQuestion++;
+                            showVictoryCinematic(this::completeCurrentLevel);
+                        });
+                    } else {
+                        playAttackStrikeAnimation(() -> {
+                            currentQuestion++;
+                            showQuestion();
+                        });
+                    }
+                });
+            });
+            fadeTimer.setRepeats(false);
+            fadeTimer.start();
         } else {
-
             hearts--;
-
             sendOnlineScore();
-
-            playDamageSound();
+            markWrong(buttons[selected]);
+            markCorrect(buttons[q.answer]);
+            animateButtonShake(buttons[selected]);
             triggerDamageFlash();
-            triggerScreenShake();
+            playDamageSound();
 
-            markWrong(
-                    buttons[selected]
-            );
-
-            markCorrect(
-                    buttons[q.answer]
-            );
-
-            javax.swing.Timer timer;
-
-            if (hearts <= 0) {
-
-                timer =
-                        new javax.swing.Timer(
-                                900,
-                                e ->
-                                        showLevelFailed()
-                        );
-
-            } else {
-
-                timer =
-                        new javax.swing.Timer(
-                                900,
-                                e -> {
-
-                                    currentQuestion++;
-
-                                    showQuestion();
-                                }
-                        );
-            }
-
-            timer.setRepeats(false);
-
-            timer.start();
+            // Brief pause to register error & shake, then fade questions & buttons transparent for damage reaction
+            javax.swing.Timer fadeTimer = new javax.swing.Timer(300, ev -> {
+                ((javax.swing.Timer) ev.getSource()).stop();
+                fadeQuizControls(0.16f, 160, () -> {
+                    if (hearts <= 0) {
+                        playDamageReactionAnimation("Frame11Alt.jpg", () -> {
+                            showGameOverCinematic(this::showLevelFailed);
+                        });
+                    } else if (isFinalQuestion) {
+                        playDamageReactionAnimation("Frame10Alt.jpg", () -> {
+                            currentQuestion++;
+                            showCounterAttackVictoryCinematic(this::completeCurrentLevel);
+                        });
+                    } else {
+                        String hitFrame = (hearts <= 2) ? "Frame11Alt.jpg" : "Frame10Alt.jpg";
+                        playDamageReactionAnimation(hitFrame, () -> {
+                            currentQuestion++;
+                            showQuestion();
+                        });
+                    }
+                });
+            });
+            fadeTimer.setRepeats(false);
+            fadeTimer.start();
         }
     }
 
@@ -2998,13 +3857,17 @@ public class QuizGame extends JFrame {
     private void markCorrect(
             JButton button) {
 
-        button.setBackground(
-                new Color(
-                        34,
-                        126,
-                        68
-                )
-        );
+        if (button instanceof FantasyButton) {
+            ((FantasyButton) button).setFantasyStyle(new Color(34, 126, 68), new Color(90, 220, 120), Color.WHITE);
+        } else {
+            button.setBackground(
+                    new Color(
+                            34,
+                            126,
+                            68
+                    )
+            );
+        }
 
         button.setText(
                 button.getText()
@@ -3018,13 +3881,17 @@ public class QuizGame extends JFrame {
     private void markWrong(
             JButton button) {
 
-        button.setBackground(
-                new Color(
-                        155,
-                        48,
-                        48
-                )
-        );
+        if (button instanceof FantasyButton) {
+            ((FantasyButton) button).setFantasyStyle(new Color(155, 48, 48), new Color(255, 110, 110), Color.WHITE);
+        } else {
+            button.setBackground(
+                    new Color(
+                            155,
+                            48,
+                            48
+                    )
+            );
+        }
 
         button.setText(
                 button.getText()
@@ -3080,7 +3947,7 @@ public class QuizGame extends JFrame {
         }
 
         JPanel panel =
-                createBackgroundPanel();
+                createBackgroundPanel("Frame17.jpg");
 
         panel.setLayout(
                 new GridBagLayout()
@@ -3300,7 +4167,7 @@ public class QuizGame extends JFrame {
     private void showLevelFailed() {
 
         JPanel panel =
-                createBackgroundPanel();
+                createBackgroundPanel("Frame14Alt.jpg");
 
         panel.setLayout(
                 new GridBagLayout()
@@ -3455,7 +4322,7 @@ public class QuizGame extends JFrame {
 
         stopMenuMusic();
 
-        JPanel panel = createBackgroundPanel();
+        JPanel panel = createBackgroundPanel("Frame14Alt.jpg");
         panel.setLayout(new BorderLayout());
 
         JLabel title = new JLabel("BADGES & PROGRESS", SwingConstants.CENTER);
@@ -3669,7 +4536,10 @@ public class QuizGame extends JFrame {
     // =========================
     private void showSettings() {
 
-        stopMenuMusic();
+        if (soundEnabled && masterVolumePercent > 0) {
+            playMenuMusic();
+            updateMenuMusicVolume();
+        }
 
         JPanel panel =
                 createBackgroundPanel();
@@ -3690,10 +4560,10 @@ public class QuizGame extends JFrame {
 
         card.setBorder(
                 BorderFactory.createEmptyBorder(
-                        30,
-                        60,
-                        30,
-                        60
+                        26,
+                        55,
+                        26,
+                        55
                 )
         );
 
@@ -3706,7 +4576,7 @@ public class QuizGame extends JFrame {
         title.setFont(
                 pixelFont(
                         Font.BOLD,
-                        36
+                        34
                 )
         );
 
@@ -3727,7 +4597,7 @@ public class QuizGame extends JFrame {
         difficultyLabel.setFont(
                 pixelFont(
                         Font.BOLD,
-                        18
+                        17
                 )
         );
 
@@ -3758,7 +4628,7 @@ public class QuizGame extends JFrame {
         difficultyBox.setMaximumSize(
                 new Dimension(
                         280,
-                        42
+                        40
                 )
         );
 
@@ -3772,6 +4642,31 @@ public class QuizGame extends JFrame {
         difficultyBox.setAlignmentX(
                 Component.CENTER_ALIGNMENT
         );
+
+        // Volume control slider
+        JLabel volLabel =
+                new JLabel(
+                        "Master Volume: " + masterVolumePercent + "%" + (!soundEnabled || masterVolumePercent == 0 ? " (MUTED)" : ""),
+                        SwingConstants.CENTER
+                );
+        volLabel.setFont(pixelFont(Font.BOLD, 17));
+        volLabel.setForeground(TEXT);
+        volLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JSlider volSlider = new JSlider(0, 100, masterVolumePercent);
+        volSlider.setMaximumSize(new Dimension(280, 36));
+        volSlider.setPreferredSize(new Dimension(280, 34));
+        volSlider.setOpaque(false);
+        volSlider.setUI(new FantasySliderUI(volSlider));
+        volSlider.setAlignmentX(Component.CENTER_ALIGNMENT);
+        volSlider.setFocusable(false);
+        volSlider.addChangeListener(e -> {
+            int val = volSlider.getValue();
+            masterVolumePercent = val;
+            volLabel.setText("Master Volume: " + val + "%" + (!soundEnabled || val == 0 ? " (MUTED)" : ""));
+            updateMenuMusicVolume();
+            saveSettings();
+        });
 
         JButton soundButton =
                 createFantasyButton(
@@ -3794,14 +4689,15 @@ public class QuizGame extends JFrame {
                                     : "OFF")
                     );
 
+                    volLabel.setText("Master Volume: " + masterVolumePercent + "%" + (!soundEnabled || masterVolumePercent == 0 ? " (MUTED)" : ""));
+
                     if (!soundEnabled) {
-
                         stopMenuMusic();
-
                     } else {
-
                         playMenuMusic();
+                        updateMenuMusicVolume();
                     }
+                    saveSettings();
                 }
         );
 
@@ -3824,6 +4720,16 @@ public class QuizGame extends JFrame {
                 }
         );
 
+        JButton cameraButton =
+                createFantasyButton(
+                        "Camera: " + getDesktopCameraDisplayName()
+                );
+        cameraButton.addActionListener(e -> {
+            cycleDesktopCameraMode();
+            cameraButton.setText("Camera: " + getDesktopCameraDisplayName());
+            for (BackgroundPanel p : activeDesktopPanels) p.repaint();
+        });
+
         JButton reset =
                 createFantasyButton(
                         "RESET ALL BADGES"
@@ -3834,7 +4740,7 @@ public class QuizGame extends JFrame {
 
                     int result =
                             JOptionPane.showConfirmDialog(
-                                    this,
+                                     this,
                                     "Reset all language level progress?",
                                     "Reset Progress",
                                     JOptionPane.YES_NO_OPTION
@@ -3884,19 +4790,23 @@ public class QuizGame extends JFrame {
                                     .getSelectedItem()
                                     .toString();
 
+                    saveSettings();
                     showHome();
                 }
         );
 
         back.addActionListener(
-                e -> showHome()
+                e -> {
+                    saveSettings();
+                    showHome();
+                }
         );
 
         card.add(title);
 
         card.add(
                 Box.createVerticalStrut(
-                        28
+                        20
                 )
         );
 
@@ -3904,7 +4814,7 @@ public class QuizGame extends JFrame {
 
         card.add(
                 Box.createVerticalStrut(
-                        10
+                        8
                 )
         );
 
@@ -3912,7 +4822,23 @@ public class QuizGame extends JFrame {
 
         card.add(
                 Box.createVerticalStrut(
-                        18
+                        14
+                )
+        );
+
+        card.add(volLabel);
+
+        card.add(
+                Box.createVerticalStrut(
+                        6
+                )
+        );
+
+        card.add(volSlider);
+
+        card.add(
+                Box.createVerticalStrut(
+                        14
                 )
         );
 
@@ -3920,7 +4846,7 @@ public class QuizGame extends JFrame {
 
         card.add(
                 Box.createVerticalStrut(
-                        18
+                        14
                 )
         );
 
@@ -3928,7 +4854,15 @@ public class QuizGame extends JFrame {
 
         card.add(
                 Box.createVerticalStrut(
-                        18
+                        14
+                )
+        );
+
+        card.add(cameraButton);
+
+        card.add(
+                Box.createVerticalStrut(
+                        14
                 )
         );
 
@@ -3936,7 +4870,7 @@ public class QuizGame extends JFrame {
 
         card.add(
                 Box.createVerticalStrut(
-                        18
+                        14
                 )
         );
 
@@ -3944,7 +4878,7 @@ public class QuizGame extends JFrame {
 
         card.add(
                 Box.createVerticalStrut(
-                        18
+                        14
                 )
         );
 
@@ -3952,7 +4886,7 @@ public class QuizGame extends JFrame {
 
         card.add(
                 Box.createVerticalStrut(
-                        10
+                        8
                 )
         );
 
@@ -3966,47 +4900,42 @@ public class QuizGame extends JFrame {
     // =========================
     // FANTASY PANEL
     // =========================
-    private class FantasyPanel
-            extends JPanel {
+    private class FantasyPanel extends JPanel {
+        private final int arc;
+        private final Color bgColor;
+        private final Color strokeColor;
 
         FantasyPanel() {
+            this(16, 24, 18, PANEL, new Color(231, 160, 39, 136));
+        }
 
-            setOpaque(true);
+        FantasyPanel(int padV, int padH) {
+            this(padV, padH, 18, PANEL, new Color(231, 160, 39, 136));
+        }
 
-            setBackground(
-                    PANEL
-            );
-
-            setBorder(
-                    new GoldBorder(
-                            2,
-                            10
-                    )
-            );
+        FantasyPanel(int padV, int padH, int arc, Color bgColor, Color strokeColor) {
+            this.arc = arc;
+            this.bgColor = bgColor;
+            this.strokeColor = strokeColor;
+            setOpaque(false);
+            setBorder(BorderFactory.createEmptyBorder(padV, padH, padV, padH));
         }
 
         @Override
-        protected void paintComponent(
-                Graphics g) {
-
-            Graphics2D g2 =
-                    (Graphics2D) g.create();
-
-            g2.setColor(
-                    getBackground()
-            );
-
-            g2.fillRoundRect(
-                    0,
-                    0,
-                    getWidth() - 1,
-                    getHeight() - 1,
-                    18,
-                    18
-            );
-
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int w = getWidth();
+            int h = getHeight();
+            RoundRectangle2D.Float r = new RoundRectangle2D.Float(1f, 1f, w - 2f, h - 2f, (float) arc, (float) arc);
+            g2.setColor(bgColor);
+            g2.fill(r);
+            if (strokeColor != null) {
+                g2.setColor(strokeColor);
+                g2.setStroke(new BasicStroke(2.0f));
+                g2.draw(r);
+            }
             g2.dispose();
-
             super.paintComponent(g);
         }
     }
@@ -4014,400 +4943,262 @@ public class QuizGame extends JFrame {
     // =========================
     // GOLD BORDER
     // =========================
-    private class GoldBorder
-            extends AbstractBorder {
-
+    private class GoldBorder extends AbstractBorder {
         private final int thickness;
         private final int radius;
+        private final Color strokeColor;
 
-        GoldBorder(
-                int thickness,
-                int radius) {
+        GoldBorder(int thickness, int radius) {
+            this(thickness, radius, new Color(231, 160, 39, 140));
+        }
 
-            this.thickness =
-                    thickness;
-
-            this.radius =
-                    radius;
+        GoldBorder(int thickness, int radius, Color strokeColor) {
+            this.thickness = thickness;
+            this.radius = radius;
+            this.strokeColor = strokeColor;
         }
 
         @Override
-        public void paintBorder(
-                Component c,
-                Graphics g,
-                int x,
-                int y,
-                int w,
-                int h) {
-
-            Graphics2D g2 =
-                    (Graphics2D) g.create();
-
-            g2.setRenderingHint(
-                    RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON
+        public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setStroke(new BasicStroke((float) thickness));
+            g2.setColor(strokeColor);
+            float pad = thickness / 2.0f + 0.5f;
+            RoundRectangle2D.Float r = new RoundRectangle2D.Float(
+                    x + pad,
+                    y + pad,
+                    w - (pad * 2f),
+                    h - (pad * 2f),
+                    (float) radius,
+                    (float) radius
             );
-
-            g2.setStroke(
-                    new BasicStroke(
-                            thickness
-                    )
-            );
-
-            g2.setColor(
-                    GOLD_DARK
-            );
-
-            g2.drawRoundRect(
-                    x + 2,
-                    y + 2,
-                    w - 5,
-                    h - 5,
-                    radius,
-                    radius
-            );
-
-            g2.setColor(
-                    GOLD
-            );
-
-            g2.drawRoundRect(
-                    x + 1,
-                    y + 1,
-                    w - 3,
-                    h - 3,
-                    radius,
-                    radius
-            );
-
-            g2.setColor(
-                    GOLD_LIGHT
-            );
-
-            g2.drawRoundRect(
-                    x + 3,
-                    y + 3,
-                    w - 7,
-                    h - 7,
-                    radius - 2,
-                    radius - 2
-            );
-
+            g2.draw(r);
             g2.dispose();
         }
 
         @Override
-        public Insets getBorderInsets(
-                Component c) {
+        public Insets getBorderInsets(Component c) {
+            int pad = thickness + 4;
+            return new Insets(pad, pad, pad, pad);
+        }
 
-            return new Insets(
-                    thickness + 4,
-                    thickness + 4,
-                    thickness + 4,
-                    thickness + 4
-            );
+        @Override
+        public Insets getBorderInsets(Component c, Insets insets) {
+            int pad = thickness + 4;
+            insets.left = insets.top = insets.right = insets.bottom = pad;
+            return insets;
         }
     }
 
     // =========================
     // NORMAL BUTTON
     // =========================
-    private JButton createFantasyButton(
-            String text) {
-
-        JButton button =
-                new FantasyButton(
-                        wrapHtml(text, 260)
-                );
-
-        button.setMaximumSize(
-                new Dimension(
-                        320,
-                        120
-                )
-        );
-
-        button.setMinimumSize(
-                new Dimension(
-                        320,
-                        52
-                )
-        );
-
-        button.setAlignmentX(
-                Component.CENTER_ALIGNMENT
-        );
-
+    private JButton createFantasyButton(String text) {
+        JButton button = new FantasyButton(text);
+        button.setPreferredSize(new Dimension(300, 48));
+        button.setMaximumSize(new Dimension(340, 52));
+        button.setMinimumSize(new Dimension(240, 44));
+        button.setAlignmentX(Component.CENTER_ALIGNMENT);
+        button.setHorizontalAlignment(SwingConstants.CENTER);
+        button.setVerticalAlignment(SwingConstants.CENTER);
         return button;
     }
 
     private JButton createCompactFantasyButton(String text, int width, int height) {
-        JButton button = new FantasyButton(wrapHtml(text, width));
+        JButton button = new FantasyButton(text);
         button.setPreferredSize(new Dimension(width, height));
         button.setMaximumSize(new Dimension(width, height));
         button.setMinimumSize(new Dimension(width, height));
         button.setFont(pixelFont(Font.BOLD, 13));
+        button.setAlignmentX(Component.CENTER_ALIGNMENT);
+        button.setHorizontalAlignment(SwingConstants.CENTER);
+        button.setVerticalAlignment(SwingConstants.CENTER);
         return button;
     }
 
     // =========================
     // ANSWER BUTTON
     // =========================
-    private JButton createAnswerButton(
-            String text) {
-
-        JButton button =
-                new FantasyButton(
-                        wrapHtml(text, 780, "left")
-                );
-
-        button.setMaximumSize(
-                new Dimension(
-                        850,
-                        140
-                )
-        );
-
-        button.setMinimumSize(
-                new Dimension(
-                        850,
-                        56
-                )
-        );
-
-        button.setAlignmentX(
-                Component.CENTER_ALIGNMENT
-        );
-
-        button.setHorizontalAlignment(
-                SwingConstants.LEFT
-        );
-
-        button.setBorder(
-                BorderFactory.createCompoundBorder(
-                        new GoldBorder(
-                                2,
-                                12
-                        ),
-                        BorderFactory.createEmptyBorder(
-                                8,
-                                18,
-                                8,
-                                18
-                        )
-                )
-        );
-
+    private JButton createAnswerButton(String text) {
+        JButton button = new FantasyButton(text);
+        button.setPreferredSize(new Dimension(840, 52));
+        button.setMaximumSize(new Dimension(880, 68));
+        button.setMinimumSize(new Dimension(600, 48));
+        button.setAlignmentX(Component.CENTER_ALIGNMENT);
+        button.setHorizontalAlignment(SwingConstants.LEFT);
+        button.setVerticalAlignment(SwingConstants.CENTER);
+        button.setFont(pixelFont(Font.BOLD, 15));
+        button.setBorder(BorderFactory.createEmptyBorder(10, 22, 10, 22));
         return button;
     }
 
     // =========================
     // TEXT WRAP HELPER
     // =========================
-    private String wrapHtml(
-            String text,
-            int width) {
-
+    private String wrapHtml(String text, int width) {
         return wrapHtml(text, width, "center");
     }
 
-    private String wrapHtml(
-            String text,
-            int width,
-            String align) {
+    private String wrapHtml(String text, int width, String align) {
+        if (text == null) return "";
+        String escaped = text
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
 
-        String escaped =
-                text
-                        .replace("&", "&amp;")
-                        .replace("<", "&lt;")
-                        .replace(">", "&gt;");
-
-        String margin =
-                align.equals("center")
-                        ? "margin:0 auto; "
-                        : "";
-
-        return "<html><div style='"
-                + margin
-                + "text-align:"
-                + align
-                + "; width:"
-                + width
-                + "px;'>"
-                + escaped
-                + "</div></html>";
+        if ("left".equalsIgnoreCase(align)) {
+            return "<html><div style='text-align:left;'>" + escaped.replace("\n", "<br>") + "</div></html>";
+        }
+        return "<html><center>" + escaped.replace("\n", "<br>") + "</center></html>";
     }
 
     // =========================
     // FANTASY BUTTON
     // =========================
-    private class FantasyButton
-            extends JButton {
-
+    private class FantasyButton extends JButton {
         private float pressFlash = 0f;
         private javax.swing.Timer flashTimer;
+        private Color customBg = null;
+        private Color customBorder = null;
+        private Color customTextColor = null;
+        private int shakeOffsetX = 0;
 
-        FantasyButton(
-                String text) {
+        FantasyButton(String text) {
+            super(cleanButtonText(text));
 
-            super(text);
-
-            setFont(
-                    pixelFont(
-                            Font.BOLD,
-                            17
-                    )
-            );
-
-            setForeground(
-                    TEXT
-            );
-
-            setBackground(
-                    new Color(
-                            26,
-                            36,
-                            48
-                    )
-            );
-
-            setFocusPainted(
-                    false
-            );
-
-            setBorder(
-                    new GoldBorder(
-                            2,
-                            12
-                    )
-            );
-
-            setContentAreaFilled(
-                    false
-            );
-
+            setFont(pixelFont(Font.BOLD, 15));
+            setForeground(TEXT);
+            setBackground(new Color(35, 47, 59)); // Mobile btn_fantasy.xml normal: #232F3B
+            setFocusPainted(false);
+            setContentAreaFilled(false);
             setOpaque(false);
+            setBorderPainted(false);
+            setHorizontalAlignment(SwingConstants.CENTER);
+            setVerticalAlignment(SwingConstants.CENTER);
+            setHorizontalTextPosition(SwingConstants.CENTER);
+            setVerticalTextPosition(SwingConstants.CENTER);
+            setCursor(new Cursor(Cursor.HAND_CURSOR));
+            setMargin(new Insets(8, 16, 8, 16));
 
-            setCursor(
-                    new Cursor(
-                            Cursor.HAND_CURSOR
-                    )
-            );
+            addActionListener(e -> playClickSound());
+            addActionListener(e -> triggerPressFlash());
+        }
 
-            addActionListener(
-                    e -> playClickSound()
-            );
+        public void setShakeOffset(int offset) {
+            this.shakeOffsetX = offset;
+            repaint();
+        }
 
-            addActionListener(
-                    e -> triggerPressFlash()
-            );
+        public void setFantasyStyle(Color normalBg, Color strokeColor) {
+            setFantasyStyle(normalBg, strokeColor, null);
+        }
+
+        public void setFantasyStyle(Color normalBg, Color strokeColor, Color textColor) {
+            this.customBg = normalBg;
+            this.customBorder = strokeColor;
+            this.customTextColor = textColor;
+            if (textColor != null) {
+                setForeground(textColor);
+            }
+            repaint();
+        }
+
+        @Override
+        public void setText(String text) {
+            super.setText(cleanButtonText(text));
+        }
+
+        private static String cleanButtonText(String text) {
+            if (text == null) return "";
+            if (text.startsWith("<html>") && text.contains("width:")) {
+                text = text.replaceAll("width:\\s*\\d+px;?", "");
+            }
+            return text;
         }
 
         private void triggerPressFlash() {
-
             pressFlash = 1f;
-
-            if (flashTimer != null
-                    && flashTimer.isRunning()) {
-
+            if (flashTimer != null && flashTimer.isRunning()) {
                 flashTimer.stop();
             }
-
-            flashTimer =
-                    new javax.swing.Timer(
-                            20,
-                            e -> {
-
-                                pressFlash -= 0.08f;
-
-                                if (pressFlash <= 0f) {
-
-                                    pressFlash = 0f;
-
-                                    flashTimer.stop();
-                                }
-
-                                repaint();
-                            }
-                    );
-
+            flashTimer = new javax.swing.Timer(20, e -> {
+                pressFlash -= 0.08f;
+                if (pressFlash <= 0f) {
+                    pressFlash = 0f;
+                    flashTimer.stop();
+                }
+                repaint();
+            });
             flashTimer.start();
         }
 
         @Override
-        protected void paintComponent(
-                Graphics g) {
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-            Graphics2D g2 =
-                    (Graphics2D) g.create();
+            if (shakeOffsetX != 0) {
+                g2.translate(shakeOffsetX, 0);
+            }
 
-            g2.setRenderingHint(
-                    RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON
-            );
+            int w = getWidth();
+            int h = getHeight();
+            float arc = 16f; // Mobile 8dp equivalent
 
-            Color fill =
-                    getBackground();
+            Color fill;
+            Color strokeColor;
+            float strokeWidth = 1.5f;
 
-            if (!isEnabled()) {
-
-                fill =
-                        new Color(
-                                40,
-                                43,
-                                47
-                        );
-
-            } else if (
-                    getModel().isPressed()) {
-
-                fill =
-                        new Color(
-                                88,
-                                56,
-                                22
-                        );
-
-            } else if (
-                    getModel().isRollover()) {
-
-                fill =
-                        new Color(
-                                42,
-                                55,
-                                70
-                        );
+            if (customBg != null) {
+                fill = customBg;
+                strokeColor = (customBorder != null) ? customBorder : fill.brighter();
+                if (getModel().isPressed()) {
+                    fill = fill.darker();
+                    strokeWidth = 2.0f;
+                } else if (getModel().isRollover()) {
+                    fill = fill.brighter();
+                    strokeWidth = 1.8f;
+                }
+            } else if (!isEnabled()) {
+                fill = new Color(28, 37, 48); // #1C2530
+                strokeColor = new Color(58, 72, 88); // #3A4858
+                strokeWidth = 1.0f;
+            } else if (getModel().isPressed()) {
+                fill = new Color(116, 67, 18); // #744312 (Mobile pressed amber)
+                strokeColor = GOLD_LIGHT; // #FFCA4E
+                strokeWidth = 2.0f;
+            } else if (getModel().isRollover()) {
+                fill = new Color(45, 61, 78); // Sleek hover
+                strokeColor = GOLD_LIGHT;
+                strokeWidth = 1.8f;
+            } else {
+                fill = getBackground();
+                strokeColor = new Color(231, 160, 39, 130); // 1.5dp #77E7A027
             }
 
             if (pressFlash > 0f) {
-
-                int blend =
-                        (int) (pressFlash * 90);
-
-                fill =
-                        new Color(
-                                Math.min(255, fill.getRed() + blend),
-                                Math.min(255, fill.getGreen() + blend),
-                                Math.min(255, fill.getBlue() + blend)
-                        );
+                int blend = (int) (pressFlash * 90);
+                fill = new Color(
+                        Math.min(255, fill.getRed() + blend),
+                        Math.min(255, fill.getGreen() + blend),
+                        Math.min(255, fill.getBlue() + blend)
+                );
             }
 
-            g2.setColor(
-                    fill
-            );
+            // Symmetrical anti-aliased rounded rectangle
+            RoundRectangle2D.Float r = new RoundRectangle2D.Float(1f, 1f, w - 2f, h - 2f, arc, arc);
+            g2.setColor(fill);
+            g2.fill(r);
 
-            g2.fillRoundRect(
-                    2,
-                    2,
-                    getWidth() - 5,
-                    getHeight() - 5,
-                    14,
-                    14
-            );
+            g2.setColor(strokeColor);
+            g2.setStroke(new BasicStroke(strokeWidth));
+            g2.draw(r);
 
+            // Swing paints button text with exact center alignment
+            super.paintComponent(g2);
             g2.dispose();
-
-            super.paintComponent(g);
         }
     }
 
@@ -4520,16 +5311,23 @@ public class QuizGame extends JFrame {
                     }
                 }
                 
+                float effectiveVolume = (!soundEnabled || masterVolumePercent <= 0) ? 0.0001f : volume * (masterVolumePercent / 100.0f);
                 if (clip.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
                     FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
-                    float dB = (float) (Math.log10(Math.max(volume, 0.0001f)) * 20.0f);
-                    gainControl.setValue(Math.max(gainControl.getMinimum(), Math.min(gainControl.getMaximum(), dB)));
+                    if (!soundEnabled || masterVolumePercent <= 0) {
+                        gainControl.setValue(gainControl.getMinimum());
+                    } else {
+                        float dB = (float) (Math.log10(Math.max(effectiveVolume, 0.0001f)) * 20.0f);
+                        gainControl.setValue(Math.max(gainControl.getMinimum(), Math.min(gainControl.getMaximum(), dB)));
+                    }
                 }
                 
                 if (loop) {
                     clip.loop(Clip.LOOP_CONTINUOUSLY);
                 } else {
-                    clip.start();
+                    if (soundEnabled && masterVolumePercent > 0) {
+                        clip.start();
+                    }
                 }
                 
             } catch (Exception e) {
@@ -4547,10 +5345,12 @@ public class QuizGame extends JFrame {
     }
 
     private void playClickSound() {
+        if (!soundEnabled || masterVolumePercent <= 0) return;
         playSoundEffect(SOUND_CLICK, 1f);
     }
 
     private void playDamageSound() {
+        if (!soundEnabled || masterVolumePercent <= 0) return;
         playSoundEffect(SOUND_DAMAGE, 1f);
     }
     
@@ -4558,14 +5358,29 @@ public class QuizGame extends JFrame {
     // MENU MUSIC
     // =========================
 
+    private void updateMenuMusicVolume() {
+        Clip clip = menuMusicClip.get();
+        if (clip != null && clip.isOpen() && clip.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+            try {
+                FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+                if (!soundEnabled || masterVolumePercent <= 0) {
+                    gainControl.setValue(gainControl.getMinimum());
+                } else {
+                    float effectiveVol = 0.5f * (masterVolumePercent / 100.0f);
+                    float dB = (float) (Math.log10(Math.max(effectiveVol, 0.0001f)) * 20.0f);
+                    gainControl.setValue(Math.max(gainControl.getMinimum(), Math.min(gainControl.getMaximum(), dB)));
+                }
+            } catch (Exception ignored) {}
+        }
+    }
 
     private void playMenuMusic() {
-        if (!soundEnabled) {
+        if (!soundEnabled || masterVolumePercent <= 0) {
             return;
         }
 
         if (menuMusicClip.get() != null && menuMusicClip.get().isRunning()) {
-            return;
+            updateMenuMusicVolume();
         } else {
             playSoundEffect(MUSIC_MENU, true, 0.5f, menuMusicClip);
         }
@@ -4634,9 +5449,147 @@ public class QuizGame extends JFrame {
         }
     }
 
+    private double getFocalPanXForFrame(String frameName) {
+        if (frameName == null) return 0.40;
+        if (frameName.contains("Frame4") || frameName.contains("Frame5") || frameName.contains("Frame15") || frameName.contains("Frame9")) {
+            return -0.45; // Focus on the Colossal Monster / Beast on the right
+        }
+        if (frameName.contains("Frame8")) {
+            return 0.48;  // Hero leaping attack focus
+        }
+        if (frameName.contains("Alt")) {
+            return 0.50;  // Hero damage reaction focus
+        }
+        if (frameName.contains("Frame16") || frameName.contains("Frame17") || frameName.contains("Frame6")) {
+            return 0.46;  // Hero blade draw / victorious sheath focus
+        }
+        return 0.40;      // Standard character focus on hero standing on the left
+    }
+
+    private double getFocalZoomForFrame(String frameName) {
+        if (frameName == null) return 1.04;
+        if (frameName.contains("Frame8") || frameName.contains("Frame9") || frameName.contains("Alt")) {
+            return 1.15; // Action impact punch zoom
+        }
+        if (frameName.contains("Frame4") || frameName.contains("Frame5")) {
+            return 1.16; // Dramatic colossal beast zoom
+        }
+        return 1.04;
+    }
+
+    private void applyFrameCameraFocus(String frameName) {
+        if (desktopCameraMode != DesktopCameraMode.FOLLOW_STORY) return;
+        desktopPanX = getFocalPanXForFrame(frameName);
+        desktopPanY = 0.0;
+        desktopZoomScale = getFocalZoomForFrame(frameName);
+        for (BackgroundPanel p : activeDesktopPanels) {
+            p.repaint();
+        }
+    }
+
+    private void playAttackStrikeAnimation(Runnable onComplete) {
+        if (currentQuizPanel == null) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+
+        // STAGE 1: Hero leaps forward (Frame8.jpg) with camera focusing on hero
+        applyFrameCameraFocus("Frame8.jpg");
+        currentQuizPanel.setFrameImage("Frame8.jpg");
+        playClickSound();
+
+        // STAGE 2: Sword strikes monster with blue sparks (Frame9.jpg)
+        javax.swing.Timer strikeTimer = new javax.swing.Timer(380, e1 -> {
+            ((javax.swing.Timer) e1.getSource()).stop();
+            applyFrameCameraFocus("Frame9.jpg");
+            if (currentQuizPanel != null) {
+                currentQuizPanel.setFrameImage("Frame9.jpg");
+            }
+            triggerScreenShake();
+            playClickSound();
+
+            // STAGE 3: Hold impact on monster for 650ms, then advance
+            javax.swing.Timer endTimer = new javax.swing.Timer(650, e2 -> {
+                ((javax.swing.Timer) e2.getSource()).stop();
+                applyFrameCameraFocus("Frame7.jpg");
+                if (onComplete != null) onComplete.run();
+            });
+            endTimer.setRepeats(false);
+            endTimer.start();
+        });
+        strikeTimer.setRepeats(false);
+        strikeTimer.start();
+    }
+
+    private void playDamageReactionAnimation(String hitFrame, Runnable onComplete) {
+        if (currentQuizPanel == null) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+
+        // STAGE 1: Camera focuses on monster preparing crushing attack
+        if (desktopCameraMode == DesktopCameraMode.FOLLOW_STORY) {
+            desktopPanX = -0.46;
+            desktopZoomScale = 1.15;
+            currentQuizPanel.repaint();
+        }
+
+        javax.swing.Timer hitTimer = new javax.swing.Timer(380, e1 -> {
+            ((javax.swing.Timer) e1.getSource()).stop();
+            // STAGE 2: Monster blow connects! Screen flashes red, shakes, hero reels
+            applyFrameCameraFocus(hitFrame);
+            if (currentQuizPanel != null) {
+                currentQuizPanel.setFrameImage(hitFrame);
+            }
+            playDamageSound();
+            triggerDamageFlash();
+            triggerScreenShake();
+
+            // Hold on damaged hero for 750ms
+            javax.swing.Timer endTimer = new javax.swing.Timer(750, e2 -> {
+                ((javax.swing.Timer) e2.getSource()).stop();
+                applyFrameCameraFocus("Frame7.jpg");
+                if (onComplete != null) onComplete.run();
+            });
+            endTimer.setRepeats(false);
+            endTimer.start();
+        });
+        hitTimer.setRepeats(false);
+        hitTimer.start();
+    }
+
+    private void triggerDamageImpactCamera() {
+        if (desktopCameraMode != DesktopCameraMode.FOLLOW_STORY) return;
+        // 1. Focus on the attacking monster for a moment
+        desktopPanX = -0.40;
+        desktopZoomScale = 1.12;
+        for (BackgroundPanel p : activeDesktopPanels) p.repaint();
+
+        // 2. Switch focus over to the knight taking the hit
+        javax.swing.Timer timerSwitchToKnight = new javax.swing.Timer(650, e1 -> {
+            ((javax.swing.Timer) e1.getSource()).stop();
+            desktopPanX = 0.48;
+            desktopZoomScale = 1.16;
+            for (BackgroundPanel p : activeDesktopPanels) p.repaint();
+
+            // 3. Smoothly return to standard standoff stance
+            javax.swing.Timer timerReturn = new javax.swing.Timer(750, e2 -> {
+                ((javax.swing.Timer) e2.getSource()).stop();
+                desktopPanX = 0.40;
+                desktopZoomScale = 1.04;
+                for (BackgroundPanel p : activeDesktopPanels) p.repaint();
+            });
+            timerReturn.setRepeats(false);
+            timerReturn.start();
+        });
+        timerSwitchToKnight.setRepeats(false);
+        timerSwitchToKnight.start();
+    }
+
     // Flashes the red damage overlay for exactly 1 second total
     // (quick flash in, then fade out) and then disappears completely.
     private void triggerDamageFlash() {
+        triggerDamageImpactCamera();
 
         final long duration = 1000L;
         final long start = System.currentTimeMillis();
@@ -4730,6 +5683,296 @@ public class QuizGame extends JFrame {
         );
 
         timer.start();
+    }
+
+    // =========================
+    // GAME SETTINGS PERSISTENCE
+    // =========================
+    private void loadSettings() {
+        if (!SETTINGS_FILE.exists()) return;
+        Properties p = new Properties();
+        try (FileInputStream in = new FileInputStream(SETTINGS_FILE)) {
+            p.load(in);
+            soundEnabled = Boolean.parseBoolean(p.getProperty("soundEnabled", "true"));
+            masterVolumePercent = Math.max(0, Math.min(100, Integer.parseInt(p.getProperty("masterVolume", "80"))));
+            difficulty = p.getProperty("difficulty", "Medium");
+        } catch (Exception ignored) {}
+    }
+
+    private void saveSettings() {
+        Properties p = new Properties();
+        p.setProperty("soundEnabled", String.valueOf(soundEnabled));
+        p.setProperty("masterVolume", String.valueOf(masterVolumePercent));
+        p.setProperty("difficulty", difficulty);
+        try (FileOutputStream out = new FileOutputStream(SETTINGS_FILE)) {
+            p.store(out, "Quiz Adventure Settings");
+        } catch (Exception ignored) {}
+    }
+
+    // =========================
+    // QUIZ ANIMATIONS & CONTROLS TRANSPARENCY
+    // =========================
+    private void fadeQuizControls(float targetAlpha, int durationMs, Runnable onComplete) {
+        if (currentQuizCenterPanel == null) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+        if (quizFadeTimer != null && quizFadeTimer.isRunning()) {
+            quizFadeTimer.stop();
+        }
+        float startAlpha = currentQuizCenterPanel.getAlpha();
+        long startTime = System.currentTimeMillis();
+
+        quizFadeTimer = new javax.swing.Timer(16, e -> {
+            long elapsed = System.currentTimeMillis() - startTime;
+            float progress = Math.min(1.0f, (float) elapsed / durationMs);
+            float ease = (float) Math.sin(progress * Math.PI / 2.0);
+            float curAlpha = startAlpha + (targetAlpha - startAlpha) * ease;
+            currentQuizCenterPanel.setAlpha(curAlpha);
+
+            if (progress >= 1.0f) {
+                ((javax.swing.Timer) e.getSource()).stop();
+                currentQuizCenterPanel.setAlpha(targetAlpha);
+                if (onComplete != null) {
+                    onComplete.run();
+                }
+            }
+        });
+        quizFadeTimer.start();
+    }
+
+    private void animateQuestionEntrance(AlphaPanel panel) {
+        if (panel == null) return;
+        panel.setAlpha(0.0f);
+        panel.setTranslateY(18);
+        long startTime = System.currentTimeMillis();
+        int duration = 220;
+        javax.swing.Timer entranceTimer = new javax.swing.Timer(16, e -> {
+            long elapsed = System.currentTimeMillis() - startTime;
+            float progress = Math.min(1.0f, (float) elapsed / duration);
+            float ease = (float) Math.sin(progress * Math.PI / 2.0);
+            panel.setAlpha(ease);
+            panel.setTranslateY((int) ((1.0f - ease) * 18));
+            if (progress >= 1.0f) {
+                ((javax.swing.Timer) e.getSource()).stop();
+                panel.setAlpha(1.0f);
+                panel.setTranslateY(0);
+            }
+        });
+        entranceTimer.start();
+    }
+
+    private void animateButtonShake(JButton button) {
+        if (!(button instanceof FantasyButton)) return;
+        FantasyButton fb = (FantasyButton) button;
+        int[] offsets = { -12, 12, -9, 9, -6, 6, -3, 3, 0 };
+        long stepMs = 28;
+        javax.swing.Timer shakeTimer = new javax.swing.Timer((int) stepMs, null);
+        final int[] step = { 0 };
+        shakeTimer.addActionListener(e -> {
+            if (step[0] < offsets.length) {
+                fb.setShakeOffset(offsets[step[0]]);
+                step[0]++;
+            } else {
+                fb.setShakeOffset(0);
+                shakeTimer.stop();
+            }
+        });
+        shakeTimer.start();
+    }
+
+    // =========================
+    // ALPHA CONTAINER PANEL
+    // =========================
+    private static class AlphaPanel extends JPanel {
+        private float alpha = 1.0f;
+        private int translateY = 0;
+
+        public AlphaPanel() {
+            setOpaque(false);
+        }
+
+        public void setAlpha(float a) {
+            this.alpha = Math.max(0.0f, Math.min(1.0f, a));
+            repaint();
+        }
+
+        public float getAlpha() {
+            return this.alpha;
+        }
+
+        public void setTranslateY(int y) {
+            this.translateY = y;
+            repaint();
+        }
+
+        public int getTranslateY() {
+            return this.translateY;
+        }
+
+        @Override
+        public void paint(Graphics g) {
+            if (alpha <= 0.005f) {
+                return;
+            }
+            Graphics2D g2 = (Graphics2D) g.create();
+            if (translateY != 0) {
+                g2.translate(0, translateY);
+            }
+            if (alpha < 0.995f) {
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+            }
+            super.paint(g2);
+            g2.dispose();
+        }
+    }
+
+    // =========================
+    // SCREEN TRANSITION ROOT PANEL
+    // =========================
+    private class TransitionRootPanel extends JPanel {
+        private JPanel currentPanel = null;
+        private BufferedImage outgoingSnapshot = null;
+        private float transitionProgress = 1.0f;
+        private javax.swing.Timer transitionTimer = null;
+
+        TransitionRootPanel() {
+            setLayout(new BorderLayout());
+            setOpaque(true);
+            setBackground(new Color(14, 22, 31));
+        }
+
+        public void transitionTo(JPanel nextPanel) {
+            if (nextPanel == null) return;
+
+            if (transitionTimer != null && transitionTimer.isRunning()) {
+                transitionTimer.stop();
+            }
+
+            if (currentPanel != null && getWidth() > 0 && getHeight() > 0) {
+                try {
+                    outgoingSnapshot = new BufferedImage(getWidth(), getHeight(), BufferedImage.TYPE_INT_ARGB);
+                    Graphics2D g2 = outgoingSnapshot.createGraphics();
+                    currentPanel.paint(g2);
+                    g2.dispose();
+                } catch (Throwable t) {
+                    outgoingSnapshot = null;
+                }
+            } else {
+                outgoingSnapshot = null;
+            }
+
+            removeAll();
+            currentPanel = nextPanel;
+            add(currentPanel, BorderLayout.CENTER);
+            revalidate();
+            repaint();
+
+            if (outgoingSnapshot != null) {
+                transitionProgress = 0.0f;
+                long startTime = System.currentTimeMillis();
+                int duration = 180;
+
+                transitionTimer = new javax.swing.Timer(15, e -> {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    float progress = Math.min(1.0f, (float) elapsed / duration);
+                    transitionProgress = (float) Math.sin(progress * Math.PI / 2.0);
+
+                    if (progress >= 1.0f) {
+                        transitionProgress = 1.0f;
+                        ((javax.swing.Timer) e.getSource()).stop();
+                        if (outgoingSnapshot != null) {
+                            outgoingSnapshot.flush();
+                            outgoingSnapshot = null;
+                        }
+                    }
+                    repaint();
+                });
+                transitionTimer.start();
+            } else {
+                transitionProgress = 1.0f;
+            }
+        }
+
+        @Override
+        public void paint(Graphics g) {
+            if (transitionProgress >= 0.999f || outgoingSnapshot == null) {
+                super.paint(g);
+                return;
+            }
+
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+            // 1. Live incoming screen fading in with subtle slide
+            float inAlpha = Math.max(0.0f, Math.min(1.0f, transitionProgress));
+            int slideY = (int) ((1.0f - transitionProgress) * 12);
+
+            Graphics2D gIn = (Graphics2D) g2.create();
+            gIn.translate(0, slideY);
+            gIn.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, inAlpha));
+            super.paint(gIn);
+            gIn.dispose();
+
+            // 2. Outgoing snapshot fading out on top
+            float outAlpha = Math.max(0.0f, Math.min(1.0f, 1.0f - transitionProgress));
+            if (outAlpha > 0.01f) {
+                Graphics2D gOut = (Graphics2D) g2.create();
+                gOut.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, outAlpha));
+                gOut.drawImage(outgoingSnapshot, 0, 0, null);
+                gOut.dispose();
+            }
+
+            g2.dispose();
+        }
+    }
+
+    // =========================
+    // FANTASY SLIDER UI
+    // =========================
+    private class FantasySliderUI extends BasicSliderUI {
+        public FantasySliderUI(JSlider b) {
+            super(b);
+        }
+
+        @Override
+        public void paintTrack(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            Rectangle t = trackRect;
+            int trackH = 6;
+            int trackY = t.y + (t.height - trackH) / 2;
+            g2.setColor(new Color(25, 36, 46));
+            g2.fillRoundRect(t.x, trackY, t.width, trackH, 6, 6);
+            int fillW = thumbRect.x + thumbRect.width / 2 - t.x;
+            if (fillW > 0) {
+                g2.setColor(GOLD);
+                g2.fillRoundRect(t.x, trackY, Math.min(fillW, t.width), trackH, 6, 6);
+            }
+            g2.setColor(GOLD_DARK);
+            g2.setStroke(new BasicStroke(1.2f));
+            g2.drawRoundRect(t.x, trackY, t.width, trackH, 6, 6);
+            g2.dispose();
+        }
+
+        @Override
+        public void paintThumb(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            Rectangle r = thumbRect;
+            g2.setColor(GOLD_LIGHT);
+            g2.fillOval(r.x + 2, r.y + 2, r.width - 4, r.height - 4);
+            g2.setColor(GOLD_DARK);
+            g2.setStroke(new BasicStroke(1.5f));
+            g2.drawOval(r.x + 2, r.y + 2, r.width - 4, r.height - 4);
+            g2.dispose();
+        }
+
+        @Override
+        protected Dimension getThumbSize() {
+            return new Dimension(20, 20);
+        }
     }
 
     // =========================

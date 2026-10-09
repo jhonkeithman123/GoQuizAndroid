@@ -23,12 +23,49 @@ public class QuizServer {
     }
 
     private volatile ServerSocket serverSocket;
+    private volatile DatagramSocket discoverySocket;
+    private volatile Thread discoveryThread;
     private volatile boolean running = false;
+
+    private void startDiscoveryResponder() {
+        try {
+            discoverySocket = new DatagramSocket(null);
+            discoverySocket.setReuseAddress(true);
+            discoverySocket.bind(new InetSocketAddress(5052));
+            discoveryThread = new Thread(() -> {
+                byte[] buf = new byte[512];
+                while (running && discoverySocket != null && !discoverySocket.isClosed()) {
+                    try {
+                        DatagramPacket packet = new DatagramPacket(buf, buf.length);
+                        discoverySocket.receive(packet);
+                        String req = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8).trim();
+                        if (req.contains("GOQUIZ_DISCOVER_PROBE")) {
+                            byte[] resp = ("GOQUIZ_SERVER_ANNOUNCE|" + port + "|QuizServer").getBytes(StandardCharsets.UTF_8);
+                            DatagramPacket outPacket = new DatagramPacket(resp, resp.length, packet.getSocketAddress());
+                            discoverySocket.send(outPacket);
+                        }
+                    } catch (Exception ignored) {
+                        if (!running) break;
+                    }
+                }
+            }, "QuizServerDiscovery");
+            discoveryThread.setDaemon(true);
+            discoveryThread.start();
+        } catch (Exception ignored) {}
+    }
+
+    private void stopDiscoveryResponder() {
+        if (discoverySocket != null && !discoverySocket.isClosed()) {
+            try { discoverySocket.close(); } catch (Exception ignored) {}
+            discoverySocket = null;
+        }
+    }
 
     public void start() throws IOException {
         if (running) return;
         running = true;
         serverSocket = new ServerSocket(port);
+        startDiscoveryResponder();
         System.out.println("Quiz Adventure Leaderboard Server running on port " + port);
         System.out.println("Students connect using this server PC's IP address.");
         System.out.println("Only highest scores are stored. No multiplayer rooms are used.");
@@ -44,6 +81,7 @@ public class QuizServer {
 
     public synchronized void stop() {
         running = false;
+        stopDiscoveryResponder();
         if (serverSocket != null && !serverSocket.isClosed()) {
             try {
                 serverSocket.close();

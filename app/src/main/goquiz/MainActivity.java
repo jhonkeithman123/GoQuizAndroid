@@ -6,10 +6,22 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.graphics.drawable.Drawable;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.view.ScaleGestureDetector;
+import android.view.GestureDetector;
+import android.view.Choreographer;
+import android.view.ViewConfiguration;
 import android.util.DisplayMetrics;
 import android.content.*;
 import android.content.res.ColorStateList;
+import android.animation.ValueAnimator;
 import android.view.*;
+import android.view.animation.AccelerateDecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.*;
 import android.media.*;
@@ -19,6 +31,7 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
 
@@ -107,9 +120,496 @@ public class MainActivity extends Activity {
         "The battle begins! Answer wisely to defeat the beast!"
     };
 
+    public enum FramingMode {
+        FOLLOW_STORY,   // Camera dynamically follows characters, combat & story actions
+        FREE_PAN,       // Free manual panning and exploration across full artwork
+        FIT_LETTERBOX   // Full untouched artwork letterbox (100% visible)
+    }
+
+    public static volatile FramingMode currentFramingMode = FramingMode.FOLLOW_STORY;
+    public static volatile float bgZoomScale = 1.0f;
+    public static volatile float bgPanX = 0f;
+    public static volatile float bgPanY = 0f;
+    public static volatile float bgTiltX = 0f;
+    public static volatile float bgTiltY = 0f;
+    public static volatile float bgDriftX = 0f;
+    public static volatile float bgDriftY = 0f;
+    public static volatile long lastTouchInteractionTime = 0;
+
+    final List<InteractiveImageView> activeInteractiveViews = new CopyOnWriteArrayList<>();
+    final List<TextView> activeFramingBadges = new CopyOnWriteArrayList<>();
+
+    void updateAllInteractiveViews() {
+        for (InteractiveImageView v : activeInteractiveViews) {
+            v.applyInteractiveMatrix();
+        }
+    }
+
+    String getCameraModeDisplayName() {
+        switch (currentFramingMode) {
+            case FOLLOW_STORY:
+                return "FOLLOW STORY 🎬";
+            case FREE_PAN:
+                return "FREE PAN 🖐";
+            case FIT_LETTERBOX:
+            default:
+                return "FIT SCREEN ⛶";
+        }
+    }
+
+    String getFramingBadgeLabel() {
+        switch (currentFramingMode) {
+            case FOLLOW_STORY:
+                return "🎬 STORY";
+            case FREE_PAN:
+                return "🖐 PAN";
+            case FIT_LETTERBOX:
+            default:
+                return "⛶ FIT";
+        }
+    }
+
+    void updateAllFramingBadges() {
+        String label = getFramingBadgeLabel();
+        for (TextView badge : activeFramingBadges) {
+            badge.setText(label);
+        }
+    }
+
+    void toggleFramingMode() {
+        switch (currentFramingMode) {
+            case FOLLOW_STORY:
+                currentFramingMode = FramingMode.FREE_PAN;
+                Toast.makeText(this, "Camera: Free Pan (Explore artwork freely)", Toast.LENGTH_SHORT).show();
+                break;
+            case FREE_PAN:
+                currentFramingMode = FramingMode.FIT_LETTERBOX;
+                Toast.makeText(this, "Camera: Full Letterbox (100% visible)", Toast.LENGTH_SHORT).show();
+                break;
+            case FIT_LETTERBOX:
+            default:
+                currentFramingMode = FramingMode.FOLLOW_STORY;
+                Toast.makeText(this, "Camera: Follow Story (Cinematic Director)", Toast.LENGTH_SHORT).show();
+                if (currentScreen == Screen.QUIZ) {
+                    setFrameCharacterFocus("Frame7.jpg", true);
+                }
+                break;
+        }
+        if (prefs != null) {
+            prefs.edit().putString("cameraFramingMode", currentFramingMode.name()).apply();
+        }
+        updateAllFramingBadges();
+        updateAllInteractiveViews();
+    }
+
+    private ValueAnimator cameraFocusAnimator = null;
+
+    void animateCameraToCharacterFocus(float targetPanX, float targetPanY, float targetZoom, int durationMs) {
+        animateCameraToCharacterFocus(targetPanX, targetPanY, targetZoom, durationMs, null);
+    }
+
+    void animateCameraToCharacterFocus(float targetPanX, float targetPanY, float targetZoom, int durationMs, Runnable onComplete) {
+        if (currentFramingMode != FramingMode.FOLLOW_STORY) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+        if (SystemClock.uptimeMillis() - lastTouchInteractionTime < 400) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+
+        if (cameraFocusAnimator != null) {
+            cameraFocusAnimator.cancel();
+        }
+
+        final float startPanX = bgPanX;
+        final float startPanY = bgPanY;
+        final float startZoom = bgZoomScale;
+
+        cameraFocusAnimator = ValueAnimator.ofFloat(0f, 1f);
+        cameraFocusAnimator.setDuration(durationMs);
+        cameraFocusAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
+        cameraFocusAnimator.addUpdateListener(animation -> {
+            float f = (float) animation.getAnimatedValue();
+            bgPanX = startPanX + (targetPanX - startPanX) * f;
+            bgPanY = startPanY + (targetPanY - startPanY) * f;
+            bgZoomScale = startZoom + (targetZoom - startZoom) * f;
+            updateAllInteractiveViews();
+        });
+        if (onComplete != null) {
+            cameraFocusAnimator.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(android.animation.Animator animation) {
+                    onComplete.run();
+                }
+            });
+        }
+        cameraFocusAnimator.start();
+    }
+
+    float getFocalPanXForFrame(String frameName) {
+        if (frameName == null) return 0.40f;
+        if (frameName.contains("Frame4") || frameName.contains("Frame5") || frameName.contains("Frame15") || frameName.contains("Frame9")) {
+            return -0.45f; // Focus on the Colossal Monster / Beast on the right (including monster struck in Frame9)
+        }
+        if (frameName.contains("Frame8")) {
+            return 0.48f;  // Hero leaping attack focus
+        }
+        if (frameName.contains("Alt")) {
+            return 0.50f;  // Hero damage reaction focus
+        }
+        if (frameName.contains("Frame16") || frameName.contains("Frame17") || frameName.contains("Frame6")) {
+            return 0.46f;  // Hero blade draw / victorious sheath focus
+        }
+        return 0.40f;      // Standard character focus on hero standing on the left
+    }
+
+    float getFocalZoomForFrame(String frameName) {
+        if (frameName == null) return 1.04f;
+        if (frameName.contains("Frame8") || frameName.contains("Frame9") || frameName.contains("Alt")) {
+            return 1.14f; // Action impact punch zoom
+        }
+        if (frameName.contains("Frame4") || frameName.contains("Frame5")) {
+            return 1.16f; // Dramatic colossal beast zoom
+        }
+        return 1.04f;
+    }
+
+    void setFrameCharacterFocus(String frameName, boolean animate) {
+        if (currentFramingMode != FramingMode.FOLLOW_STORY) {
+            return;
+        }
+        float targetX = getFocalPanXForFrame(frameName);
+        float targetZoom = getFocalZoomForFrame(frameName);
+        if (animate) {
+            animateCameraToCharacterFocus(targetX, 0f, targetZoom, 380);
+        } else {
+            bgPanX = targetX;
+            bgPanY = 0f;
+            bgZoomScale = targetZoom;
+            updateAllInteractiveViews();
+        }
+    }
+
+    void animateCinematicFramingDirector(String frameName) {
+        if (frameName == null || currentFramingMode != FramingMode.FOLLOW_STORY) return;
+        if (frameName.contains("Frame1.jpg")) {
+            // Knight entering the cave: focus on the knight, then pan across to reveal the cave, then frame both
+            bgPanX = 0.48f;
+            bgPanY = 0f;
+            bgZoomScale = 1.08f;
+            updateAllInteractiveViews();
+            mainHandler.postDelayed(() -> {
+                if (cinematicFinished) return;
+                // Pan smoothly towards the dark cave entrance
+                animateCameraToCharacterFocus(-0.35f, 0f, 1.06f, 1100, () -> {
+                    // Settle gently to frame both the knight and the cave
+                    if (!cinematicFinished) {
+                        animateCameraToCharacterFocus(0.10f, 0f, 1.03f, 700);
+                    }
+                });
+            }, 600);
+            return;
+        }
+        if (frameName.contains("Frame2.jpg")) {
+            // Descending corridors: sweep from knight into subterranean depths
+            bgPanX = 0.44f;
+            bgPanY = 0f;
+            bgZoomScale = 1.06f;
+            updateAllInteractiveViews();
+            mainHandler.postDelayed(() -> {
+                if (!cinematicFinished) {
+                    animateCameraToCharacterFocus(-0.10f, 0f, 1.04f, 1100);
+                }
+            }, 500);
+            return;
+        }
+        if (frameName.contains("Frame3.jpg")) {
+            // Torchlight stone chamber: wide panoramic perspective
+            animateCameraToCharacterFocus(0.04f, 0f, 1.02f, 450);
+            return;
+        }
+        if (frameName.contains("Frame4.jpg")) {
+            // Colossal beast awakens from shadows: zoom and pan directly to the beast on the right
+            animateCameraToCharacterFocus(-0.46f, 0f, 1.14f, 450);
+            return;
+        }
+        if (frameName.contains("Frame5.jpg")) {
+            // Beast roars with blazing fury: punch tight into beast's roaring jaws
+            animateCameraToCharacterFocus(-0.46f, 0f, 1.20f, 320);
+            return;
+        }
+        if (frameName.contains("Frame6.jpg")) {
+            // Knight draws enchanted blade: whip camera back to knight preparing for combat
+            animateCameraToCharacterFocus(0.48f, 0f, 1.12f, 340);
+            return;
+        }
+        if (frameName.contains("Frame7.jpg")) {
+            // Battle begins: standoff framing
+            animateCameraToCharacterFocus(0.40f, 0f, 1.04f, 360);
+            return;
+        }
+        setFrameCharacterFocus(frameName, true);
+    }
+
+    TextView createFramingModeBadge() {
+        float density = getResources().getDisplayMetrics().density;
+        TextView badge = new TextView(this);
+        String label = getFramingBadgeLabel();
+        badge.setText(label);
+        badge.setTextSize(11);
+        badge.setTypeface(Typeface.DEFAULT_BOLD);
+        badge.setTextColor(GOLD_LIGHT);
+        badge.setGravity(Gravity.CENTER);
+
+        android.graphics.drawable.GradientDrawable gd = new android.graphics.drawable.GradientDrawable();
+        gd.setColor(Color.argb(190, 20, 16, 12));
+        gd.setStroke((int) (1.5f * density), GOLD);
+        gd.setCornerRadius(14 * density);
+        badge.setBackground(gd);
+
+        int px = (int) (10 * density);
+        int py = (int) (5 * density);
+        badge.setPadding(px, py, px, py);
+
+        badge.setOnClickListener(v -> {
+            v.animate().scaleX(1.15f).scaleY(1.15f).setDuration(100).withEndAction(() -> {
+                v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(120).start();
+            }).start();
+            toggleFramingMode();
+        });
+
+        activeFramingBadges.add(badge);
+        badge.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                if (!activeFramingBadges.contains(badge)) activeFramingBadges.add(badge);
+            }
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                activeFramingBadges.remove(badge);
+            }
+        });
+
+        return badge;
+    }
+
+    public class InteractiveImageView extends ImageView {
+        private final Matrix interactiveMatrix = new Matrix();
+
+        public InteractiveImageView(Context context) {
+            super(context);
+            setScaleType(ScaleType.MATRIX);
+        }
+
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            if (!activeInteractiveViews.contains(this)) {
+                activeInteractiveViews.add(this);
+            }
+            applyInteractiveMatrix();
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            activeInteractiveViews.remove(this);
+        }
+
+        @Override
+        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            applyInteractiveMatrix();
+        }
+
+        @Override
+        public void setImageDrawable(Drawable drawable) {
+            super.setImageDrawable(drawable);
+            applyInteractiveMatrix();
+        }
+
+        @Override
+        public void setImageBitmap(Bitmap bm) {
+            super.setImageBitmap(bm);
+            applyInteractiveMatrix();
+        }
+
+        @Override
+        public void setImageResource(int resId) {
+            super.setImageResource(resId);
+            applyInteractiveMatrix();
+        }
+
+        public void applyInteractiveMatrix() {
+            Drawable d = getDrawable();
+            if (d == null) return;
+            int imgW = d.getIntrinsicWidth();
+            int imgH = d.getIntrinsicHeight();
+            if (imgW <= 0 || imgH <= 0) return;
+
+            int vW = getWidth();
+            int vH = getHeight();
+            if (vW <= 0 || vH <= 0) return;
+
+            float scale;
+            float transX;
+            float transY;
+
+            if (currentFramingMode == FramingMode.FIT_LETTERBOX) {
+                float baseScale = Math.min((float) vW / (float) imgW, (float) vH / (float) imgH);
+                scale = baseScale * bgZoomScale;
+                float scaledW = imgW * scale;
+                float scaledH = imgH * scale;
+
+                float extraW = Math.max(0f, scaledW - vW);
+                float extraH = Math.max(0f, scaledH - vH);
+
+                transX = (vW - scaledW) * 0.5f + (bgPanX * (extraW * 0.5f));
+                transY = (vH - scaledH) * 0.5f + (bgPanY * (extraH * 0.5f));
+            } else {
+                // FOLLOW_STORY or FREE_PAN (fills viewport)
+                float baseScale = Math.max((float) vW / (float) imgW, (float) vH / (float) imgH);
+                scale = baseScale * bgZoomScale;
+                float scaledW = imgW * scale;
+                float scaledH = imgH * scale;
+
+                float overflowX = Math.max(0f, scaledW - vW);
+                float overflowY = Math.max(0f, scaledH - vH);
+
+                float combinedX = (currentFramingMode == FramingMode.FOLLOW_STORY)
+                        ? Math.max(-1.0f, Math.min(1.0f, bgPanX + bgTiltX + bgDriftX))
+                        : Math.max(-1.0f, Math.min(1.0f, bgPanX + bgTiltX));
+                float combinedY = (currentFramingMode == FramingMode.FOLLOW_STORY)
+                        ? Math.max(-1.0f, Math.min(1.0f, bgPanY + bgTiltY + bgDriftY))
+                        : Math.max(-1.0f, Math.min(1.0f, bgPanY + bgTiltY));
+
+                transX = -overflowX * 0.5f + (combinedX * (overflowX * 0.5f));
+                transY = -overflowY * 0.5f + (combinedY * (overflowY * 0.5f));
+            }
+
+            interactiveMatrix.reset();
+            interactiveMatrix.postScale(scale, scale);
+            interactiveMatrix.postTranslate(transX, transY);
+            setImageMatrix(interactiveMatrix);
+            invalidate();
+        }
+    }
+
+    public class InteractiveContainerLayout extends FrameLayout {
+        private ScaleGestureDetector scaleDetector;
+        private GestureDetector gestureDetector;
+        private float lastTouchX;
+        private float lastTouchY;
+        private boolean isDragging = false;
+        private final float touchSlop;
+
+        public InteractiveContainerLayout(Context context) {
+            super(context);
+            touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+            initDetectors(context);
+        }
+
+        private void initDetectors(Context context) {
+            scaleDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                @Override
+                public boolean onScale(ScaleGestureDetector detector) {
+                    lastTouchInteractionTime = SystemClock.uptimeMillis();
+                    bgZoomScale *= detector.getScaleFactor();
+                    if (bgZoomScale < 1.0f) bgZoomScale = 1.0f;
+                    if (bgZoomScale > 3.0f) bgZoomScale = 3.0f;
+                    updateAllInteractiveViews();
+                    return true;
+                }
+            });
+
+            gestureDetector = new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
+                @Override
+                public boolean onDoubleTap(MotionEvent e) {
+                    lastTouchInteractionTime = SystemClock.uptimeMillis();
+                    if (bgZoomScale > 1.08f) {
+                        bgZoomScale = 1.0f;
+                        bgPanX = 0f;
+                        bgPanY = 0f;
+                        updateAllInteractiveViews();
+                        Toast.makeText(getContext(), "Zoom Reset", Toast.LENGTH_SHORT).show();
+                    } else {
+                        toggleFramingMode();
+                    }
+                    return true;
+                }
+            });
+        }
+
+        @Override
+        public boolean dispatchTouchEvent(MotionEvent ev) {
+            lastTouchInteractionTime = SystemClock.uptimeMillis();
+            if (scaleDetector != null) scaleDetector.onTouchEvent(ev);
+            if (gestureDetector != null) gestureDetector.onTouchEvent(ev);
+
+            int action = ev.getActionMasked();
+            switch (action) {
+                case MotionEvent.ACTION_DOWN:
+                    lastTouchX = ev.getX();
+                    lastTouchY = ev.getY();
+                    isDragging = false;
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    if (ev.getPointerCount() >= 2 || !canChildScroll(this, ev.getX(), ev.getY())) {
+                        float dx = ev.getX() - lastTouchX;
+                        float dy = ev.getY() - lastTouchY;
+                        if (!isDragging && (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop)) {
+                            isDragging = true;
+                        }
+                        if (isDragging && getWidth() > 0 && getHeight() > 0) {
+                            bgPanX += (dx / (float) getWidth()) * 2.2f;
+                            bgPanY += (dy / (float) getHeight()) * 2.2f;
+                            bgPanX = Math.max(-1.0f, Math.min(1.0f, bgPanX));
+                            bgPanY = Math.max(-1.0f, Math.min(1.0f, bgPanY));
+                            updateAllInteractiveViews();
+                            lastTouchX = ev.getX();
+                            lastTouchY = ev.getY();
+                        }
+                    }
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    isDragging = false;
+                    break;
+            }
+
+            return super.dispatchTouchEvent(ev);
+        }
+
+        private boolean canChildScroll(ViewGroup parent, float x, float y) {
+            for (int i = parent.getChildCount() - 1; i >= 0; i--) {
+                View child = parent.getChildAt(i);
+                if (child.getVisibility() == View.VISIBLE && isPointInsideView(x, y, child)) {
+                    if (child instanceof ScrollView || child instanceof AbsListView) {
+                        return true;
+                    }
+                    if (child instanceof ViewGroup && canChildScroll((ViewGroup) child, x, y)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private boolean isPointInsideView(float x, float y, View view) {
+            int[] location = new int[2];
+            view.getLocationOnScreen(location);
+            int[] parentLocation = new int[2];
+            getLocationOnScreen(parentLocation);
+            float vx = location[0] - parentLocation[0];
+            float vy = location[1] - parentLocation[1];
+            return x >= vx && x <= (vx + view.getWidth()) && y >= vy && y <= (vy + view.getHeight());
+        }
+    }
+
     Bitmap currentCustomBgBmp = null;
-    ImageView currentBgViewA = null;
-    ImageView currentBgViewB = null;
+    InteractiveImageView currentBgViewA = null;
+    InteractiveImageView currentBgViewB = null;
     boolean currentBgShowingA = true;
     Bitmap currentBgBmpA = null;
     Bitmap currentBgBmpB = null;
@@ -117,8 +617,8 @@ public class MainActivity extends Activity {
 
     Handler cinematicHandler = null;
     Runnable cinematicRunnable = null;
-    ImageView cinematicViewA = null;
-    ImageView cinematicViewB = null;
+    InteractiveImageView cinematicViewA = null;
+    InteractiveImageView cinematicViewB = null;
     TextView cinematicCaption = null;
     TextView cinematicProgress = null;
     int cinematicFrameIndex = 0;
@@ -134,6 +634,7 @@ public class MainActivity extends Activity {
     ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
     static volatile QuizServer embeddedServer;
     static volatile Thread embeddedServerThread;
+    static volatile android.net.wifi.WifiManager.MulticastLock serverMulticastLock;
     static String lastLeaderboardCache = null;
     static boolean isLeaderboardConnected = false;
 
@@ -150,16 +651,158 @@ public class MainActivity extends Activity {
     Handler mainHandler = new Handler(Looper.getMainLooper());
     View damageOverlay;
 
+    private SensorManager sensorManager;
+    private Sensor rotationSensor;
+    private SensorEventListener sensorListener;
+    private boolean isDriftRunning = false;
+
+    private final Choreographer.FrameCallback driftCallback = new Choreographer.FrameCallback() {
+        @Override
+        public void doFrame(long frameTimeNanos) {
+            if (!isDriftRunning) return;
+            long now = SystemClock.uptimeMillis();
+            if (currentFramingMode == FramingMode.FOLLOW_STORY && now - lastTouchInteractionTime > 2200) {
+                float t = (now % 60000L) / 1000f;
+                float targetDriftX = (float) Math.sin(t * 0.35) * 0.12f;
+                float targetDriftY = (float) Math.cos(t * 0.25) * 0.07f;
+                bgDriftX += (targetDriftX - bgDriftX) * 0.04f;
+                bgDriftY += (targetDriftY - bgDriftY) * 0.04f;
+                updateAllInteractiveViews();
+            } else if (Math.abs(bgDriftX) > 0.001f || Math.abs(bgDriftY) > 0.001f) {
+                bgDriftX *= 0.90f;
+                bgDriftY *= 0.90f;
+                updateAllInteractiveViews();
+            }
+            Choreographer.getInstance().postFrameCallback(this);
+        }
+    };
+
+    private void initSensors() {
+        try {
+            sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+            if (sensorManager != null) {
+                rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+                if (rotationSensor == null) {
+                    rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+                }
+                sensorListener = new SensorEventListener() {
+                    @Override
+                    public void onSensorChanged(SensorEvent event) {
+                        if (rotationSensor == null) return;
+                        if (rotationSensor.getType() == Sensor.TYPE_ROTATION_VECTOR) {
+                            float[] rMat = new float[9];
+                            SensorManager.getRotationMatrixFromVector(rMat, event.values);
+                            float[] orient = new float[3];
+                            SensorManager.getOrientation(rMat, orient);
+                            float pitch = orient[1];
+                            float roll = orient[2];
+                            float targetX = Math.max(-0.25f, Math.min(0.25f, roll * 0.45f));
+                            float targetY = Math.max(-0.25f, Math.min(0.25f, (pitch - 0.7f) * 0.45f));
+                            bgTiltX += (targetX - bgTiltX) * 0.10f;
+                            bgTiltY += (targetY - bgTiltY) * 0.10f;
+                            updateAllInteractiveViews();
+                        } else if (rotationSensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+                            float ax = event.values[0];
+                            float ay = event.values[1];
+                            float targetX = Math.max(-0.25f, Math.min(0.25f, -ax / 15f));
+                            float targetY = Math.max(-0.25f, Math.min(0.25f, (ay - 5f) / 15f));
+                            bgTiltX += (targetX - bgTiltX) * 0.10f;
+                            bgTiltY += (targetY - bgTiltY) * 0.10f;
+                            updateAllInteractiveViews();
+                        }
+                    }
+
+                    @Override
+                    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+                };
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void startAmbientDrift() {
+        if (!isDriftRunning) {
+            isDriftRunning = true;
+            Choreographer.getInstance().postFrameCallback(driftCallback);
+        }
+    }
+
+    private void stopAmbientDrift() {
+        isDriftRunning = false;
+        Choreographer.getInstance().removeFrameCallback(driftCallback);
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        lastTouchInteractionTime = SystemClock.uptimeMillis();
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                bgPanX = Math.max(-1.0f, bgPanX - 0.12f);
+                updateAllInteractiveViews();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                bgPanX = Math.min(1.0f, bgPanX + 0.12f);
+                updateAllInteractiveViews();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                bgPanY = Math.max(-1.0f, bgPanY - 0.12f);
+                updateAllInteractiveViews();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                bgPanY = Math.min(1.0f, bgPanY + 0.12f);
+                updateAllInteractiveViews();
+                return true;
+            case KeyEvent.KEYCODE_MENU:
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_F:
+                toggleFramingMode();
+                return true;
+            case KeyEvent.KEYCODE_PLUS:
+            case KeyEvent.KEYCODE_EQUALS:
+            case KeyEvent.KEYCODE_ZOOM_IN:
+                bgZoomScale = Math.min(3.0f, bgZoomScale + 0.2f);
+                updateAllInteractiveViews();
+                return true;
+            case KeyEvent.KEYCODE_MINUS:
+            case KeyEvent.KEYCODE_ZOOM_OUT:
+                bgZoomScale = Math.max(1.0f, bgZoomScale - 0.2f);
+                updateAllInteractiveViews();
+                return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
     // ==========================================
     // LIFECYCLE
     // ==========================================
+    void initCrashHandler() {
+        Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            try {
+                if (currentScreen == Screen.QUIZ && currentLevelQuestions != null && !currentLevelQuestions.isEmpty() && hearts > 0 && questionIndex < currentLevelQuestions.size()) {
+                    saveCurrentQuizMidwayProgress(true);
+                }
+            } catch (Throwable ignored) {}
+            if (defaultHandler != null) {
+                defaultHandler.uncaughtException(thread, throwable);
+            }
+        });
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
+        initCrashHandler();
         prefs = getSharedPreferences("goquiz", MODE_PRIVATE);
+        String savedFraming = prefs.getString("cameraFramingMode", FramingMode.FOLLOW_STORY.name());
+        try {
+            currentFramingMode = FramingMode.valueOf(savedFraming);
+        } catch (Exception ignored) {
+            currentFramingMode = FramingMode.FOLLOW_STORY;
+        }
         loadQuestionBankFromAssets();
         initAudioEngine();
+        initSensors();
 
         String loggedInUser = prefs.getString("loggedInStudent", null);
         if (loggedInUser != null && !loggedInUser.isEmpty()) {
@@ -181,24 +824,45 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (soundEnabled) startBackgroundMusic();
+        if (sensorManager != null && rotationSensor != null && sensorListener != null) {
+            sensorManager.registerListener(sensorListener, rotationSensor, SensorManager.SENSOR_DELAY_GAME);
+        }
+        startAmbientDrift();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        if (currentScreen == Screen.QUIZ && currentLevelQuestions != null && !currentLevelQuestions.isEmpty() && hearts > 0 && questionIndex < currentLevelQuestions.size()) {
+            saveCurrentQuizMidwayProgress(true);
+        }
         stopBackgroundMusic();
         stopIntroCinematic();
+        if (sensorManager != null && sensorListener != null) {
+            sensorManager.unregisterListener(sensorListener);
+        }
+        stopAmbientDrift();
     }
 
     @Override
     protected void onDestroy() {
         stopIntroCinematic();
+        stopAmbientDrift();
+        if (sensorManager != null && sensorListener != null) {
+            sensorManager.unregisterListener(sensorListener);
+        }
+        activeInteractiveViews.clear();
+        activeFramingBadges.clear();
         currentCustomBgBmp = null;
         currentBgBmpA = null;
         currentBgBmpB = null;
         if (embeddedServer != null) {
             embeddedServer.stop();
             embeddedServer = null;
+        }
+        if (serverMulticastLock != null && serverMulticastLock.isHeld()) {
+            try { serverMulticastLock.release(); } catch (Exception ignored) {}
+            serverMulticastLock = null;
         }
         stopBackgroundMusic();
         if (mediaPlayer != null) {
@@ -405,6 +1069,92 @@ public class MainActivity extends Activity {
     // ==========================================
     // UI LAYOUT FACTORY HELPERS
     // ==========================================
+    private Bitmap cachedTitleBitmap = null;
+
+    Bitmap getTitleBitmap() {
+        if (cachedTitleBitmap != null && !cachedTitleBitmap.isRecycled()) {
+            return cachedTitleBitmap;
+        }
+        try (InputStream is = getAssets().open("images/Title.png")) {
+            Bitmap raw = BitmapFactory.decodeStream(is);
+            if (raw == null) return null;
+            int width = raw.getWidth();
+            int height = raw.getHeight();
+            int top = 0, bottom = height - 1, left = 0, right = width - 1;
+            topLoop:
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x += 4) {
+                    if (((raw.getPixel(x, y) >> 24) & 0xff) > 10) {
+                        top = Math.max(0, y - 4);
+                        break topLoop;
+                    }
+                }
+            }
+            bottomLoop:
+            for (int y = height - 1; y >= 0; y--) {
+                for (int x = 0; x < width; x += 4) {
+                    if (((raw.getPixel(x, y) >> 24) & 0xff) > 10) {
+                        bottom = Math.min(height - 1, y + 4);
+                        break bottomLoop;
+                    }
+                }
+            }
+            leftLoop:
+            for (int x = 0; x < width; x++) {
+                for (int y = top; y <= bottom; y += 4) {
+                    if (((raw.getPixel(x, y) >> 24) & 0xff) > 10) {
+                        left = Math.max(0, x - 4);
+                        break leftLoop;
+                    }
+                }
+            }
+            rightLoop:
+            for (int x = width - 1; x >= 0; x--) {
+                for (int y = top; y <= bottom; y += 4) {
+                    if (((raw.getPixel(x, y) >> 24) & 0xff) > 10) {
+                        right = Math.min(width - 1, x + 4);
+                        break rightLoop;
+                    }
+                }
+            }
+            int cropW = Math.max(1, right - left + 1);
+            int cropH = Math.max(1, bottom - top + 1);
+            cachedTitleBitmap = Bitmap.createBitmap(raw, left, top, cropW, cropH);
+            return cachedTitleBitmap;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    View createTitleHeaderView(int maxDpWidth, int maxDpHeight) {
+        Bitmap bmp = getTitleBitmap();
+        if (bmp != null) {
+            ImageView iv = new ImageView(this);
+            iv.setImageBitmap(bmp);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            iv.setAdjustViewBounds(true);
+            float density = getResources().getDisplayMetrics().density;
+            int screenWidth = getResources().getDisplayMetrics().widthPixels;
+            int targetWidth = Math.min((int) (maxDpWidth * density), (int) (screenWidth * 0.90f));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    targetWidth,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            lp.gravity = Gravity.CENTER_HORIZONTAL;
+            lp.topMargin = (int) (2 * density);
+            lp.bottomMargin = (int) (4 * density);
+            iv.setLayoutParams(lp);
+            if (maxDpHeight > 0) {
+                iv.setMaxHeight((int) (maxDpHeight * density));
+            }
+            return iv;
+        } else {
+            TextView t = createStyledTextView("GOQUIZ ADVENTURE", 30);
+            t.setTextColor(GOLD_LIGHT);
+            return t;
+        }
+    }
+
     TextView createStyledTextView(String text, int sizeSp) {
         TextView v = new TextView(this);
         v.setText(text);
@@ -703,6 +1453,12 @@ public class MainActivity extends Activity {
     }
 
     void saveCurrentQuizMidwayProgress() {
+        saveCurrentQuizMidwayProgress(true);
+    }
+
+    void saveCurrentQuizMidwayProgress(boolean commitSynchronously) {
+        if (currentLevelQuestions == null || currentLevelQuestions.isEmpty()) return;
+        if (questionIndex >= currentLevelQuestions.size() || hearts <= 0) return;
         try {
             JSONObject obj = new JSONObject();
             obj.put("language", language);
@@ -727,7 +1483,12 @@ public class MainActivity extends Activity {
             }
             obj.put("questions", qArr);
 
-            prefs.edit().putString(getSavedQuizStorageKey(), obj.toString()).apply();
+            SharedPreferences.Editor editor = prefs.edit().putString(getSavedQuizStorageKey(), obj.toString());
+            if (commitSynchronously) {
+                editor.commit();
+            } else {
+                editor.apply();
+            }
         } catch (Exception ignored) {}
     }
 
@@ -1073,13 +1834,11 @@ public class MainActivity extends Activity {
         final int startIdx = Math.max(0, Math.min(startFrameIdx, LEVEL_INTRO_FRAMES.length - 1));
 
         float density = getResources().getDisplayMetrics().density;
-        FrameLayout root = new FrameLayout(this);
+        InteractiveContainerLayout root = new InteractiveContainerLayout(this);
         root.setBackgroundColor(Color.BLACK);
 
-        cinematicViewA = new ImageView(this);
-        cinematicViewA.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        cinematicViewB = new ImageView(this);
-        cinematicViewB.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        cinematicViewA = new InteractiveImageView(this);
+        cinematicViewB = new InteractiveImageView(this);
         cinematicViewB.setAlpha(0f);
 
         root.addView(cinematicViewA, new FrameLayout.LayoutParams(-1, -1));
@@ -1116,6 +1875,11 @@ public class MainActivity extends Activity {
         levelTag.setTextColor(GOLD_LIGHT);
         levelTag.setGravity(Gravity.START);
         headerBar.addView(levelTag, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        View framingBadge = createFramingModeBadge();
+        LinearLayout.LayoutParams fLp = new LinearLayout.LayoutParams(-2, -2);
+        fLp.rightMargin = (int) (8 * density);
+        headerBar.addView(framingBadge, fLp);
 
         Button skipBtn = createStyledButton("SKIP ⏩");
         setButtonFantasyStyle(skipBtn, Color.argb(200, 32, 22, 14), GOLD_LIGHT);
@@ -1158,6 +1922,7 @@ public class MainActivity extends Activity {
         // Initial setup for Frame
         cinematicFrameIndex = startIdx;
         cinematicShowingA = true;
+        animateCinematicFramingDirector(LEVEL_INTRO_FRAMES[startIdx]);
         cinematicBmpA = loadScaledFrameBitmap(LEVEL_INTRO_FRAMES[startIdx]);
         if (cinematicBmpA != null) {
             cinematicViewA.setImageBitmap(cinematicBmpA);
@@ -1218,6 +1983,7 @@ public class MainActivity extends Activity {
                         }
 
                         if (nextBmp != null) {
+                            animateCinematicFramingDirector(nextFrameName);
                             android.view.animation.AccelerateDecelerateInterpolator interp = 
                                     new android.view.animation.AccelerateDecelerateInterpolator();
                             if (cinematicShowingA) {
@@ -1267,64 +2033,79 @@ public class MainActivity extends Activity {
             return;
         }
 
-        final String[] strikeFrames = {"Frame8.jpg", "Frame9.jpg", "Frame7.jpg"};
-        final int[] idx = {0};
+        // STAGE 1: Focus on the character launching the attack (Frame8.jpg)
+        animateCameraToCharacterFocus(0.48f, 0f, 1.15f, 220);
+        playClickSound();
 
-        final Runnable step = new Runnable() {
-            @Override
-            public void run() {
+        backgroundExecutor.execute(() -> {
+            Bitmap leapBmp = loadScaledFrameBitmap("Frame8.jpg");
+            runOnUiThread(() -> {
                 if (currentScreen != Screen.QUIZ) {
                     if (onComplete != null) onComplete.run();
                     return;
                 }
 
-                if (idx[0] >= strikeFrames.length) {
-                    if (onComplete != null) onComplete.run();
-                    return;
+                if (leapBmp != null) {
+                    AccelerateDecelerateInterpolator interp = new AccelerateDecelerateInterpolator();
+                    if (currentBgShowingA) {
+                        currentBgBmpB = leapBmp;
+                        currentBgViewB.setImageBitmap(currentBgBmpB);
+                        currentBgViewB.animate().alpha(1f).setDuration(160).setInterpolator(interp).start();
+                        currentBgViewA.animate().alpha(0f).setDuration(160).setInterpolator(interp).start();
+                        currentBgShowingA = false;
+                    } else {
+                        currentBgBmpA = leapBmp;
+                        currentBgViewA.setImageBitmap(currentBgBmpA);
+                        currentBgViewA.animate().alpha(1f).setDuration(160).setInterpolator(interp).start();
+                        currentBgViewB.animate().alpha(0f).setDuration(160).setInterpolator(interp).start();
+                        currentBgShowingA = true;
+                    }
                 }
 
-                String frameName = strikeFrames[idx[0]];
-                idx[0]++;
+                // Hold on the character leaping and launching the attack for 380ms
+                mainHandler.postDelayed(() -> {
+                    if (currentScreen != Screen.QUIZ) {
+                        if (onComplete != null) onComplete.run();
+                        return;
+                    }
 
-                backgroundExecutor.execute(() -> {
-                    Bitmap bmp = loadScaledFrameBitmap(frameName);
-                    runOnUiThread(() -> {
-                        if (currentScreen != Screen.QUIZ) {
-                            return;
-                        }
+                    // STAGE 2: Camera sweeps across to focus directly on the MONSTER taking the hit (Frame9.jpg)!
+                    animateCameraToCharacterFocus(-0.46f, 0f, 1.18f, 220);
 
-                        if (bmp != null) {
-                            android.view.animation.AccelerateDecelerateInterpolator interp =
-                                    new android.view.animation.AccelerateDecelerateInterpolator();
-                            if (currentBgShowingA) {
-                                currentBgBmpB = bmp;
-                                currentBgViewB.setImageBitmap(currentBgBmpB);
-                                currentBgViewB.animate().alpha(1f).setDuration(180).setInterpolator(interp).start();
-                                currentBgViewA.animate().alpha(0f).setDuration(180).setInterpolator(interp).withEndAction(() -> {
-                                    if (currentBgViewA != null) currentBgViewA.setImageBitmap(null);
-                                    currentBgBmpA = null;
-                                }).start();
-                                currentBgShowingA = false;
-                            } else {
-                                currentBgBmpA = bmp;
-                                currentBgViewA.setImageBitmap(currentBgBmpA);
-                                currentBgViewA.animate().alpha(1f).setDuration(180).setInterpolator(interp).start();
-                                currentBgViewB.animate().alpha(0f).setDuration(180).setInterpolator(interp).withEndAction(() -> {
-                                    if (currentBgViewB != null) currentBgViewB.setImageBitmap(null);
-                                    currentBgBmpB = null;
-                                }).start();
-                                currentBgShowingA = true;
+                    backgroundExecutor.execute(() -> {
+                        Bitmap strikeBmp = loadScaledFrameBitmap("Frame9.jpg");
+                        runOnUiThread(() -> {
+                            if (currentScreen != Screen.QUIZ) {
+                                if (onComplete != null) onComplete.run();
+                                return;
                             }
-                        }
 
-                        int wait = (idx[0] == 2) ? 260 : 200;
-                        mainHandler.postDelayed(this, wait);
+                            if (strikeBmp != null) {
+                                AccelerateDecelerateInterpolator interp = new AccelerateDecelerateInterpolator();
+                                if (currentBgShowingA) {
+                                    currentBgBmpB = strikeBmp;
+                                    currentBgViewB.setImageBitmap(currentBgBmpB);
+                                    currentBgViewB.animate().alpha(1f).setDuration(160).setInterpolator(interp).start();
+                                    currentBgViewA.animate().alpha(0f).setDuration(160).setInterpolator(interp).start();
+                                    currentBgShowingA = false;
+                                } else {
+                                    currentBgBmpA = strikeBmp;
+                                    currentBgViewA.setImageBitmap(currentBgBmpA);
+                                    currentBgViewA.animate().alpha(1f).setDuration(160).setInterpolator(interp).start();
+                                    currentBgViewB.animate().alpha(0f).setDuration(160).setInterpolator(interp).start();
+                                    currentBgShowingA = true;
+                                }
+                            }
+
+                            // Hold focus on the monster receiving the devastating strike for 650ms
+                            mainHandler.postDelayed(() -> {
+                                if (onComplete != null) onComplete.run();
+                            }, 650);
+                        });
                     });
-                });
-            }
-        };
-
-        step.run();
+                }, 380);
+            });
+        });
     }
 
     void playDamageReactionAnimation(String hitFrame, Runnable onComplete) {
@@ -1333,64 +2114,53 @@ public class MainActivity extends Activity {
             return;
         }
 
-        final String[] frames = {hitFrame, "Frame7.jpg"};
-        final int[] idx = {0};
+        // 1. FOCUS ON THE ATTACKING MONSTER FIRST (for ~750ms: "focus on the monster for a second")
+        animateCameraToCharacterFocus(-0.46f, 0f, 1.15f, 260);
 
-        final Runnable step = new Runnable() {
-            @Override
-            public void run() {
-                if (currentScreen != Screen.QUIZ) {
-                    if (onComplete != null) onComplete.run();
-                    return;
-                }
-
-                if (idx[0] >= frames.length) {
-                    if (onComplete != null) onComplete.run();
-                    return;
-                }
-
-                String frameName = frames[idx[0]];
-                idx[0]++;
-
-                backgroundExecutor.execute(() -> {
-                    Bitmap bmp = loadScaledFrameBitmap(frameName);
-                    runOnUiThread(() -> {
-                        if (currentScreen != Screen.QUIZ) {
-                            return;
-                        }
-
-                        if (bmp != null) {
-                            android.view.animation.AccelerateDecelerateInterpolator interp =
-                                    new android.view.animation.AccelerateDecelerateInterpolator();
-                            if (currentBgShowingA) {
-                                currentBgBmpB = bmp;
-                                currentBgViewB.setImageBitmap(currentBgBmpB);
-                                currentBgViewB.animate().alpha(1f).setDuration(200).setInterpolator(interp).start();
-                                currentBgViewA.animate().alpha(0f).setDuration(200).setInterpolator(interp).withEndAction(() -> {
-                                    if (currentBgViewA != null) currentBgViewA.setImageBitmap(null);
-                                    currentBgBmpA = null;
-                                }).start();
-                                currentBgShowingA = false;
-                            } else {
-                                currentBgBmpA = bmp;
-                                currentBgViewA.setImageBitmap(currentBgBmpA);
-                                currentBgViewA.animate().alpha(1f).setDuration(200).setInterpolator(interp).start();
-                                currentBgViewB.animate().alpha(0f).setDuration(200).setInterpolator(interp).withEndAction(() -> {
-                                    if (currentBgViewB != null) currentBgViewB.setImageBitmap(null);
-                                    currentBgBmpB = null;
-                                }).start();
-                                currentBgShowingA = true;
-                            }
-                        }
-
-                        int wait = (idx[0] == 1) ? 300 : 220;
-                        mainHandler.postDelayed(this, wait);
-                    });
-                });
+        mainHandler.postDelayed(() -> {
+            if (currentScreen != Screen.QUIZ) {
+                if (onComplete != null) onComplete.run();
+                return;
             }
-        };
 
-        step.run();
+            // 2. MONSTER'S BLOW CONNECTS: SWITCH FOCUS IMMEDIATELY TO THE KNIGHT REELING!
+            animateCameraToCharacterFocus(0.50f, 0f, 1.15f, 220);
+            playDamageSound();
+            triggerDamageFlashEffect();
+
+            // Crossfade into hitFrame (knight taking the blow)
+            backgroundExecutor.execute(() -> {
+                Bitmap hitBmp = loadScaledFrameBitmap(hitFrame);
+                runOnUiThread(() -> {
+                    if (currentScreen != Screen.QUIZ) {
+                        if (onComplete != null) onComplete.run();
+                        return;
+                    }
+
+                    if (hitBmp != null) {
+                        AccelerateDecelerateInterpolator interp = new AccelerateDecelerateInterpolator();
+                        if (currentBgShowingA) {
+                            currentBgBmpB = hitBmp;
+                            currentBgViewB.setImageBitmap(currentBgBmpB);
+                            currentBgViewB.animate().alpha(1f).setDuration(180).setInterpolator(interp).start();
+                            currentBgViewA.animate().alpha(0f).setDuration(180).setInterpolator(interp).start();
+                            currentBgShowingA = false;
+                        } else {
+                            currentBgBmpA = hitBmp;
+                            currentBgViewA.setImageBitmap(currentBgBmpA);
+                            currentBgViewA.animate().alpha(1f).setDuration(180).setInterpolator(interp).start();
+                            currentBgViewB.animate().alpha(0f).setDuration(180).setInterpolator(interp).start();
+                            currentBgShowingA = true;
+                        }
+                    }
+
+                    // Hold focus on the damaged knight for 750ms so the hit is impactful
+                    mainHandler.postDelayed(() -> {
+                        if (onComplete != null) onComplete.run();
+                    }, 750);
+                });
+            });
+        }, 750);
     }
 
     void showGameOverCinematic(Runnable onFinished) {
@@ -1409,13 +2179,11 @@ public class MainActivity extends Activity {
         };
 
         float density = getResources().getDisplayMetrics().density;
-        FrameLayout root = new FrameLayout(this);
+        InteractiveContainerLayout root = new InteractiveContainerLayout(this);
         root.setBackgroundColor(Color.BLACK);
 
-        cinematicViewA = new ImageView(this);
-        cinematicViewA.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        cinematicViewB = new ImageView(this);
-        cinematicViewB.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        cinematicViewA = new InteractiveImageView(this);
+        cinematicViewB = new InteractiveImageView(this);
         cinematicViewB.setAlpha(0f);
 
         root.addView(cinematicViewA, new FrameLayout.LayoutParams(-1, -1));
@@ -1452,6 +2220,11 @@ public class MainActivity extends Activity {
         levelTag.setTextColor(Color.rgb(255, 95, 95));
         levelTag.setGravity(Gravity.START);
         headerBar.addView(levelTag, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        View framingBadge = createFramingModeBadge();
+        LinearLayout.LayoutParams fLp = new LinearLayout.LayoutParams(-2, -2);
+        fLp.rightMargin = (int) (8 * density);
+        headerBar.addView(framingBadge, fLp);
 
         Button skipBtn = createStyledButton("SKIP ⏩");
         setButtonFantasyStyle(skipBtn, Color.argb(200, 32, 22, 14), GOLD_LIGHT);
@@ -1491,9 +2264,20 @@ public class MainActivity extends Activity {
 
         setContentView(root);
 
-        // Initial setup for Frame 11
+        // Initial setup for Frame 11 (Crushing blow from monster):
+        // 1. Focus on the crushing blow of the monster
+        // 2. Switch focus over to the fallen adventurer
         cinematicFrameIndex = 0;
         cinematicShowingA = true;
+        bgPanX = -0.45f;
+        bgPanY = 0f;
+        bgZoomScale = 1.15f;
+        updateAllInteractiveViews();
+        mainHandler.postDelayed(() -> {
+            if (!cinematicFinished) {
+                animateCameraToCharacterFocus(0.50f, 0f, 1.14f, 260);
+            }
+        }, 650);
         cinematicBmpA = loadScaledFrameBitmap(GAMEOVER_FRAMES[0]);
         if (cinematicBmpA != null) {
             cinematicViewA.setImageBitmap(cinematicBmpA);
@@ -1557,6 +2341,7 @@ public class MainActivity extends Activity {
                         }
 
                         if (nextBmp != null) {
+                            setFrameCharacterFocus(nextFrameName, true);
                             android.view.animation.AccelerateDecelerateInterpolator interp =
                                     new android.view.animation.AccelerateDecelerateInterpolator();
                             if (cinematicShowingA) {
@@ -1618,13 +2403,11 @@ public class MainActivity extends Activity {
         };
 
         float density = getResources().getDisplayMetrics().density;
-        FrameLayout root = new FrameLayout(this);
+        InteractiveContainerLayout root = new InteractiveContainerLayout(this);
         root.setBackgroundColor(Color.BLACK);
 
-        cinematicViewA = new ImageView(this);
-        cinematicViewA.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        cinematicViewB = new ImageView(this);
-        cinematicViewB.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        cinematicViewA = new InteractiveImageView(this);
+        cinematicViewB = new InteractiveImageView(this);
         cinematicViewB.setAlpha(0f);
 
         root.addView(cinematicViewA, new FrameLayout.LayoutParams(-1, -1));
@@ -1661,6 +2444,11 @@ public class MainActivity extends Activity {
         levelTag.setTextColor(GOLD_LIGHT);
         levelTag.setGravity(Gravity.START);
         headerBar.addView(levelTag, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        View framingBadge = createFramingModeBadge();
+        LinearLayout.LayoutParams fLp = new LinearLayout.LayoutParams(-2, -2);
+        fLp.rightMargin = (int) (8 * density);
+        headerBar.addView(framingBadge, fLp);
 
         Button skipBtn = createStyledButton("SKIP ⏩");
         setButtonFantasyStyle(skipBtn, Color.argb(200, 32, 22, 14), GOLD_LIGHT);
@@ -1703,6 +2491,7 @@ public class MainActivity extends Activity {
         // Initial setup for Frame 7
         cinematicFrameIndex = 0;
         cinematicShowingA = true;
+        setFrameCharacterFocus(VICTORY_FRAMES[0], false);
         cinematicBmpA = loadScaledFrameBitmap(VICTORY_FRAMES[0]);
         if (cinematicBmpA != null) {
             cinematicViewA.setImageBitmap(cinematicBmpA);
@@ -1766,6 +2555,7 @@ public class MainActivity extends Activity {
                         }
 
                         if (nextBmp != null) {
+                            setFrameCharacterFocus(nextFrameName, true);
                             android.view.animation.AccelerateDecelerateInterpolator interp =
                                     new android.view.animation.AccelerateDecelerateInterpolator();
                             if (cinematicShowingA) {
@@ -1826,13 +2616,11 @@ public class MainActivity extends Activity {
         };
 
         float density = getResources().getDisplayMetrics().density;
-        FrameLayout root = new FrameLayout(this);
+        InteractiveContainerLayout root = new InteractiveContainerLayout(this);
         root.setBackgroundColor(Color.BLACK);
 
-        cinematicViewA = new ImageView(this);
-        cinematicViewA.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        cinematicViewB = new ImageView(this);
-        cinematicViewB.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        cinematicViewA = new InteractiveImageView(this);
+        cinematicViewB = new InteractiveImageView(this);
         cinematicViewB.setAlpha(0f);
 
         root.addView(cinematicViewA, new FrameLayout.LayoutParams(-1, -1));
@@ -1869,6 +2657,11 @@ public class MainActivity extends Activity {
         levelTag.setTextColor(GOLD_LIGHT);
         levelTag.setGravity(Gravity.START);
         headerBar.addView(levelTag, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        View framingBadge = createFramingModeBadge();
+        LinearLayout.LayoutParams fLp = new LinearLayout.LayoutParams(-2, -2);
+        fLp.rightMargin = (int) (8 * density);
+        headerBar.addView(framingBadge, fLp);
 
         Button skipBtn = createStyledButton("SKIP ⏩");
         setButtonFantasyStyle(skipBtn, Color.argb(200, 32, 22, 14), GOLD_LIGHT);
@@ -1908,9 +2701,20 @@ public class MainActivity extends Activity {
 
         setContentView(root);
 
-        // Initial setup for Frame 10 (Monster attack)
+        // Initial setup for Frame 10 (Monster attack):
+        // 1. Focus on the attacking monster for a moment
+        // 2. Switch focus over to the knight taking the hit
         cinematicFrameIndex = 0;
         cinematicShowingA = true;
+        bgPanX = -0.45f;
+        bgPanY = 0f;
+        bgZoomScale = 1.14f;
+        updateAllInteractiveViews();
+        mainHandler.postDelayed(() -> {
+            if (!cinematicFinished) {
+                animateCameraToCharacterFocus(0.50f, 0f, 1.15f, 260);
+            }
+        }, 650);
         cinematicBmpA = loadScaledFrameBitmap(COUNTER_FRAMES[0]);
         if (cinematicBmpA != null) {
             cinematicViewA.setImageBitmap(cinematicBmpA);
@@ -1974,6 +2778,7 @@ public class MainActivity extends Activity {
                         }
 
                         if (nextBmp != null) {
+                            setFrameCharacterFocus(nextFrameName, true);
                             android.view.animation.AccelerateDecelerateInterpolator interp =
                                     new android.view.animation.AccelerateDecelerateInterpolator();
                             if (cinematicShowingA) {
@@ -2023,16 +2828,24 @@ public class MainActivity extends Activity {
     }
 
     LinearLayout createFantasyPageContainer(String customFrameAsset) {
-        FrameLayout rootLayout = new FrameLayout(this);
+        if (currentBgViewA != null) {
+            currentBgViewA.animate().cancel();
+        }
+        if (currentBgViewB != null) {
+            currentBgViewB.animate().cancel();
+        }
+        if (currentContentLayout != null) {
+            currentContentLayout.animate().cancel();
+        }
+
+        InteractiveContainerLayout rootLayout = new InteractiveContainerLayout(this);
 
         currentCustomBgBmp = null;
         currentBgBmpA = null;
         currentBgBmpB = null;
 
-        currentBgViewA = new ImageView(this);
-        currentBgViewA.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        currentBgViewB = new ImageView(this);
-        currentBgViewB.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        currentBgViewA = new InteractiveImageView(this);
+        currentBgViewB = new InteractiveImageView(this);
         currentBgViewB.setAlpha(0f);
 
         rootLayout.addView(currentBgViewA, new FrameLayout.LayoutParams(-1, -1));
@@ -2041,17 +2854,16 @@ public class MainActivity extends Activity {
         currentBgShowingA = true;
 
         if (customFrameAsset != null) {
+            setFrameCharacterFocus(customFrameAsset, false);
             currentBgBmpA = loadScaledFrameBitmap(customFrameAsset);
             if (currentBgBmpA != null) {
                 currentBgViewA.setImageBitmap(currentBgBmpA);
-                currentBgViewA.setAlpha(0f);
-                currentBgViewA.animate().alpha(1f).setDuration(280).start();
             } else {
                 currentBgViewA.setImageResource(R.drawable.quiz_adventure_background);
-                currentBgViewA.setAlpha(0f);
-                currentBgViewA.animate().alpha(1f).setDuration(280).start();
             }
+            currentBgViewA.setAlpha(1f);
         } else {
+            setFrameCharacterFocus("quiz_adventure_background", false);
             Bitmap bgBmp = loadScaledFrameBitmap("quiz_adventure_background.png");
             if (bgBmp != null) {
                 currentBgBmpA = bgBmp;
@@ -2059,8 +2871,7 @@ public class MainActivity extends Activity {
             } else {
                 currentBgViewA.setImageResource(R.drawable.quiz_adventure_background);
             }
-            currentBgViewA.setAlpha(0f);
-            currentBgViewA.animate().alpha(1f).setDuration(280).start();
+            currentBgViewA.setAlpha(1f);
         }
 
         // Subtle gentle tint overlay (keeps background picture vivid while ensuring high text contrast)
@@ -2097,6 +2908,15 @@ public class MainActivity extends Activity {
         sc.addView(content, flp);
 
         rootLayout.addView(sc, new FrameLayout.LayoutParams(-1, -1));
+
+        // Floating interactive framing badge at top right
+        View framingBadge = createFramingModeBadge();
+        FrameLayout.LayoutParams badgeLp = new FrameLayout.LayoutParams(-2, -2);
+        badgeLp.gravity = Gravity.TOP | Gravity.END;
+        badgeLp.topMargin = (int) (12 * density);
+        badgeLp.rightMargin = (int) (12 * density);
+        rootLayout.addView(framingBadge, badgeLp);
+
         setContentView(rootLayout);
 
         // Fluid UI Page Entrance Transition Animation directly on the buttons and controls
@@ -2123,9 +2943,8 @@ public class MainActivity extends Activity {
         currentScreen = Screen.LOGIN;
         startBackgroundMusic();
         LinearLayout p = createFantasyPageContainer();
-        TextView appTitle = createStyledTextView("GOQUIZ ADVENTURE", 28);
-        appTitle.setTextColor(GOLD_LIGHT);
-        addViewToVerticalLayout(p, appTitle);
+        View appTitle = createTitleHeaderView(290, 125);
+        p.addView(appTitle);
         addViewToVerticalLayout(p, createStyledTextView("STUDENT LOGIN", 22));
         addViewToVerticalLayout(p, createStyledTextView("Enter your credentials to continue", 13));
         addVerticalSpacing(p, 10);
@@ -2172,9 +2991,8 @@ public class MainActivity extends Activity {
     void showRegistrationScreen() {
         currentScreen = Screen.REGISTER;
         LinearLayout p = createFantasyPageContainer();
-        TextView appTitle = createStyledTextView("GOQUIZ ADVENTURE", 26);
-        appTitle.setTextColor(GOLD_LIGHT);
-        addViewToVerticalLayout(p, appTitle);
+        View appTitle = createTitleHeaderView(290, 115);
+        p.addView(appTitle);
         addViewToVerticalLayout(p, createStyledTextView("CREATE ACCOUNT", 22));
         addVerticalSpacing(p, 8);
 
@@ -2271,9 +3089,8 @@ public class MainActivity extends Activity {
         startBackgroundMusic();
         LinearLayout p = createFantasyPageContainer();
 
-        TextView t = createStyledTextView("GOQUIZ ADVENTURE", 30);
-        t.setTextColor(GOLD_LIGHT);
-        addViewToVerticalLayout(p, t);
+        View titleHeader = createTitleHeaderView(330, 160);
+        p.addView(titleHeader);
         addViewToVerticalLayout(p, createStyledTextView("Welcome, " + studentName, 17));
         TextView sub = createStyledTextView(grade + " • Section " + section + " • Hero: " + ("Girl".equals(getActiveCharacterGenderFolder()) ? "Girl ♀" : "Boy ♂"), 13);
         sub.setTextColor(MUTED);
@@ -2617,6 +3434,9 @@ public class MainActivity extends Activity {
             return;
         }
 
+        // Auto-save midway quiz progress so if the game crashes or is closed, the exact question and stats are saved
+        saveCurrentQuizMidwayProgress(true);
+
         LinearLayout p = createFantasyPageContainer("Frame7.jpg");
 
         // Top Navigation Bar (Menu Button & In-game Settings Button)
@@ -2717,6 +3537,14 @@ public class MainActivity extends Activity {
         });
 
         addVerticalSpacing(layout, 10);
+        Button cameraBtn = createStyledButton("CAMERA: " + getCameraModeDisplayName());
+        layout.addView(cameraBtn);
+        cameraBtn.setOnClickListener(v -> {
+            toggleFramingMode();
+            cameraBtn.setText("CAMERA: " + getCameraModeDisplayName());
+        });
+
+        addVerticalSpacing(layout, 10);
         layout.addView(createVolumeControlLayout());
         addVerticalSpacing(layout, 14);
 
@@ -2771,6 +3599,9 @@ public class MainActivity extends Activity {
             animateSuccessPulse(buttons[selected]);
             score += calculatePointsPerQuestion();
             uploadStudentScoreToLeaderboard();
+            if (!isFinalQuestion) {
+                saveCurrentQuizMidwayProgress(true);
+            }
 
             if (isFinalQuestion) {
                 mainHandler.postDelayed(() -> {
@@ -2794,6 +3625,9 @@ public class MainActivity extends Activity {
             playDamageSound();
             triggerDamageFlashEffect();
             animateHorizontalShake(buttons[selected]);
+            if (hearts > 0 && !isFinalQuestion) {
+                saveCurrentQuizMidwayProgress(true);
+            }
 
             buttons[selected].setBackgroundColor(Color.rgb(155, 48, 48));
             buttons[selected].setText(buttons[selected].getText() + "  ✗");
@@ -3021,6 +3855,14 @@ public class MainActivity extends Activity {
         });
 
         addVerticalSpacing(p, 6);
+        Button cameraBtn = createStyledButton("CAMERA: " + getCameraModeDisplayName());
+        addCenteredButton(p, cameraBtn, 240);
+        cameraBtn.setOnClickListener(v -> {
+            toggleFramingMode();
+            cameraBtn.setText("CAMERA: " + getCameraModeDisplayName());
+        });
+
+        addVerticalSpacing(p, 6);
         addCenteredView(p, createVolumeControlLayout());
         addVerticalSpacing(p, 6);
 
@@ -3089,7 +3931,15 @@ public class MainActivity extends Activity {
         containerLp.gravity = Gravity.CENTER_HORIZONTAL;
         controlsContainer.setLayoutParams(containerLp);
 
-        // Button Row: Host Server, Auto-Connect, Connect & Refresh
+        // Local IP and Host Status Display
+        String myIp = getLocalIpAddress();
+        TextView ipBanner = createStyledTextView("📱 Your Device IP: " + myIp + (embeddedServer != null ? "  ★ [SERVER RUNNING on 5050]" : ""), 12);
+        ipBanner.setTextColor(embeddedServer != null ? GOLD_LIGHT : MUTED);
+        ipBanner.setGravity(Gravity.CENTER_HORIZONTAL);
+        controlsContainer.addView(ipBanner);
+        addVerticalSpacing(controlsContainer, 4);
+
+        // Button Row: Host Server, Discover, Connect & Refresh, Auto-Connect
         LinearLayout btnRow = new LinearLayout(this);
         btnRow.setOrientation(LinearLayout.HORIZONTAL);
         btnRow.setGravity(Gravity.CENTER);
@@ -3099,38 +3949,46 @@ public class MainActivity extends Activity {
         ));
 
         Button hostBtn = createStyledButton(embeddedServer != null ? "STOP LOCAL SERVER" : "HOST LOCAL SERVER");
-        hostBtn.setTextSize(12);
-        hostBtn.setPadding((int) (6 * density), (int) (8 * density), (int) (6 * density), (int) (8 * density));
+        hostBtn.setTextSize(11);
+        hostBtn.setPadding((int) (4 * density), (int) (8 * density), (int) (4 * density), (int) (8 * density));
         if (embeddedServer != null) {
             hostBtn.setBackgroundColor(Color.rgb(110, 35, 35));
         }
 
+        Button discoverBtn = createStyledButton("DISCOVER 🔍");
+        discoverBtn.setTextSize(11);
+        discoverBtn.setPadding((int) (4 * density), (int) (8 * density), (int) (4 * density), (int) (8 * density));
+        setButtonFantasyStyle(discoverBtn, Color.rgb(20, 65, 95), Color.rgb(120, 200, 255));
+
+        Button refresh = createStyledButton("REFRESH ↺");
+        refresh.setTextSize(11);
+        refresh.setPadding((int) (4 * density), (int) (8 * density), (int) (4 * density), (int) (8 * density));
+        setButtonFantasyStyle(refresh, Color.rgb(116, 67, 18), GOLD_LIGHT);
+
         boolean autoConnectEnabled = prefs.getBoolean("leaderboardAutoConnect", true);
         final boolean[] autoConnect = new boolean[]{autoConnectEnabled};
-        Button autoConnectBtn = createStyledButton(autoConnect[0] ? "AUTO-CONNECT: ON ✓" : "AUTO-CONNECT: OFF ✕");
-        autoConnectBtn.setTextSize(12);
-        autoConnectBtn.setPadding((int) (6 * density), (int) (8 * density), (int) (6 * density), (int) (8 * density));
+        Button autoConnectBtn = createStyledButton(autoConnect[0] ? "AUTO: ON ✓" : "AUTO: OFF ✕");
+        autoConnectBtn.setTextSize(11);
+        autoConnectBtn.setPadding((int) (4 * density), (int) (8 * density), (int) (4 * density), (int) (8 * density));
         if (autoConnect[0]) {
             setButtonFantasyStyle(autoConnectBtn, Color.rgb(28, 75, 45), Color.rgb(90, 220, 120));
         } else {
             setButtonFantasyStyle(autoConnectBtn, Color.rgb(35, 45, 55), MUTED);
         }
 
-        Button refresh = createStyledButton("CONNECT & REFRESH ↺");
-        refresh.setTextSize(12);
-        refresh.setPadding((int) (6 * density), (int) (8 * density), (int) (6 * density), (int) (8 * density));
-        setButtonFantasyStyle(refresh, Color.rgb(116, 67, 18), GOLD_LIGHT);
-
-        LinearLayout.LayoutParams bLp1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f);
-        bLp1.setMargins(0, 0, (int) (4 * density), 0);
-        LinearLayout.LayoutParams bLp2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.1f);
-        bLp2.setMargins((int) (4 * density), 0, (int) (4 * density), 0);
-        LinearLayout.LayoutParams bLp3 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.25f);
-        bLp3.setMargins((int) (4 * density), 0, 0, 0);
+        LinearLayout.LayoutParams bLp1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.25f);
+        bLp1.setMargins(0, 0, (int) (3 * density), 0);
+        LinearLayout.LayoutParams bLp2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.05f);
+        bLp2.setMargins((int) (3 * density), 0, (int) (3 * density), 0);
+        LinearLayout.LayoutParams bLp3 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        bLp3.setMargins((int) (3 * density), 0, (int) (3 * density), 0);
+        LinearLayout.LayoutParams bLp4 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        bLp4.setMargins((int) (3 * density), 0, 0, 0);
 
         btnRow.addView(hostBtn, bLp1);
-        btnRow.addView(autoConnectBtn, bLp2);
+        btnRow.addView(discoverBtn, bLp2);
         btnRow.addView(refresh, bLp3);
+        btnRow.addView(autoConnectBtn, bLp4);
         controlsContainer.addView(btnRow);
 
         addVerticalSpacing(controlsContainer, 4);
@@ -3230,10 +4088,25 @@ public class MainActivity extends Activity {
             if (embeddedServer != null) {
                 embeddedServer.stop();
                 embeddedServer = null;
+                if (serverMulticastLock != null && serverMulticastLock.isHeld()) {
+                    try { serverMulticastLock.release(); } catch (Exception ignored) {}
+                    serverMulticastLock = null;
+                }
                 hostBtn.setText("HOST LOCAL SERVER");
                 hostBtn.setBackgroundResource(R.drawable.btn_fantasy);
+                ipBanner.setText("📱 Your Device IP: " + getLocalIpAddress());
+                ipBanner.setTextColor(MUTED);
                 showAlertDialog("Local server stopped.");
             } else {
+                try {
+                    android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+                    if (wifi != null) {
+                        serverMulticastLock = wifi.createMulticastLock("goquiz_server_lock");
+                        serverMulticastLock.setReferenceCounted(false);
+                        serverMulticastLock.acquire();
+                    }
+                } catch (Exception ignored) {}
+
                 embeddedServer = new QuizServer(5050, getFilesDir());
                 embeddedServerThread = new Thread(() -> {
                     try { embeddedServer.start(); } catch (Exception ignored) {}
@@ -3242,18 +4115,46 @@ public class MainActivity extends Activity {
                 embeddedServerThread.start();
                 hostBtn.setText("STOP LOCAL SERVER");
                 hostBtn.setBackgroundColor(Color.rgb(110, 35, 35));
-                showAlertDialog("QuizServer is running on port 5050!\nOther devices on this Wi-Fi can connect.");
+                String currentIp = getLocalIpAddress();
+                ipBanner.setText("★ LOCAL SERVER RUNNING: " + currentIp + ":5050");
+                ipBanner.setTextColor(GOLD_LIGHT);
+                showAlertDialog("QuizServer is running on port 5050!\n\nOther devices (PC/phones on Wi-Fi or Hotspot) can connect using IP:\n" + currentIp);
+
+                // Auto-connect hosting device directly to its local server
+                host.setText("127.0.0.1");
+                prefs.edit().putString("serverHost", "127.0.0.1").apply();
+                executeLeaderboardFetch("127.0.0.1", port.getText().toString().trim(), board, statusView, false);
             }
+        });
+
+        discoverBtn.setOnClickListener(v -> {
+            statusView.setText("Scanning Wi-Fi / Hotspot for QuizServer...");
+            statusView.setTextColor(GOLD_LIGHT);
+            backgroundExecutor.submit(() -> {
+                String found = discoverServerIp(this, 5050);
+                runOnUiThread(() -> {
+                    if (found != null) {
+                        host.setText(found);
+                        prefs.edit().putString("serverHost", found).apply();
+                        Toast.makeText(this, "Found QuizServer at " + found + "!", Toast.LENGTH_SHORT).show();
+                        executeLeaderboardFetch(found, port.getText().toString().trim(), board, statusView, true);
+                    } else {
+                        statusView.setText("○ No QuizServer found on network");
+                        statusView.setTextColor(Color.rgb(255, 110, 110));
+                        showFantasyAlertDialog("AUTO-DISCOVER", "No active QuizServer was found on your Wi-Fi or Hotspot.\n\nMake sure QuizServer is running on your PC/Phone or tap 'HOST LOCAL SERVER' on this device.");
+                    }
+                });
+            });
         });
 
         autoConnectBtn.setOnClickListener(v -> {
             autoConnect[0] = !autoConnect[0];
             prefs.edit().putBoolean("leaderboardAutoConnect", autoConnect[0]).apply();
             if (autoConnect[0]) {
-                autoConnectBtn.setText("AUTO-CONNECT: ON ✓");
+                autoConnectBtn.setText("AUTO: ON ✓");
                 setButtonFantasyStyle(autoConnectBtn, Color.rgb(28, 75, 45), Color.rgb(90, 220, 120));
             } else {
-                autoConnectBtn.setText("AUTO-CONNECT: OFF ✕");
+                autoConnectBtn.setText("AUTO: OFF ✕");
                 setButtonFantasyStyle(autoConnectBtn, Color.rgb(35, 45, 55), MUTED);
             }
         });
@@ -3286,14 +4187,38 @@ public class MainActivity extends Activity {
             int pNum = 5050;
             try { pNum = Integer.parseInt(prt); } catch (Exception ignored) {}
             final int finalPort = pNum;
-            sendServerRequest(h, finalPort, "SCORE|" + sanitizeNetworkString(studentName) + "|" + score);
+            int bestScore = getStudentBestScore();
+            sendServerRequest(h, finalPort, "SCORE|" + sanitizeNetworkString(studentName) + "|" + bestScore);
             String rawResp = sendServerRequest(h, finalPort, "LEADERBOARD");
+            if ((rawResp == null || rawResp.startsWith("ERROR")) && !showUserAlerts) {
+                // If initial host fails during auto-connect, try auto-discovery fallback
+                String discovered = discoverServerIp(this, finalPort);
+                if (discovered != null && !discovered.equals(h)) {
+                    prefs.edit().putString("serverHost", discovered).apply();
+                    sendServerRequest(discovered, finalPort, "SCORE|" + sanitizeNetworkString(studentName) + "|" + bestScore);
+                    rawResp = sendServerRequest(discovered, finalPort, "LEADERBOARD");
+                    final String discoveredFinal = discovered;
+                    final String rawFinal = rawResp;
+                    runOnUiThread(() -> {
+                        if (rawFinal != null && !rawFinal.startsWith("ERROR")) {
+                            isLeaderboardConnected = true;
+                            statusView.setText("● CONNECTED (" + discoveredFinal + ":" + finalPort + ")");
+                            statusView.setTextColor(Color.rgb(90, 220, 120));
+                            lastLeaderboardCache = formatLeaderboardRankingText(rawFinal);
+                            board.setText(lastLeaderboardCache);
+                        }
+                    });
+                    return;
+                }
+            }
+
+            final String finalResp = rawResp;
             runOnUiThread(() -> {
-                if (rawResp != null && !rawResp.startsWith("ERROR")) {
+                if (finalResp != null && !finalResp.startsWith("ERROR")) {
                     isLeaderboardConnected = true;
                     statusView.setText("● CONNECTED (" + h + ":" + finalPort + ")");
                     statusView.setTextColor(Color.rgb(90, 220, 120));
-                    lastLeaderboardCache = formatLeaderboardRankingText(rawResp);
+                    lastLeaderboardCache = formatLeaderboardRankingText(finalResp);
                     board.setText(lastLeaderboardCache);
                 } else {
                     isLeaderboardConnected = false;
@@ -3302,10 +4227,10 @@ public class MainActivity extends Activity {
                     if (lastLeaderboardCache != null) {
                         board.setText(lastLeaderboardCache + "\n[Offline: Could not reach " + h + ":" + finalPort + "]");
                     } else {
-                        board.setText("Could not reach " + h + ":" + finalPort + ".\nMake sure QuizServer is running on this Wi-Fi network.");
+                        board.setText("Could not reach " + h + ":" + finalPort + ".\nMake sure QuizServer is running on Wi-Fi or Hotspot.");
                     }
                     if (showUserAlerts) {
-                        showFantasyAlertDialog("CONNECTION FAILED", "Could not connect to " + h + ":" + finalPort + ".\nMake sure QuizServer is running on the host device.");
+                        showFantasyAlertDialog("CONNECTION FAILED", "Could not connect to " + h + ":" + finalPort + ".\n\nMake sure QuizServer is running on the host device and both devices are on the same Wi-Fi or Hotspot.\n\nTip: Tap 'DISCOVER 🔍' to auto-detect the host IP!");
                     }
                 }
             });
@@ -3319,8 +4244,8 @@ public class MainActivity extends Activity {
     String sendServerRequest(String host, int port, String msg) {
         try (Socket s = new Socket()) {
             s.connect(new InetSocketAddress(host, port), 2500);
-            BufferedWriter out = new BufferedWriter(new OutputStreamWriter(s.getOutputStream()));
-            BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream()));
+            BufferedWriter out = new BufferedWriter(new OutputStreamWriter(s.getOutputStream(), StandardCharsets.UTF_8));
+            BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
             out.write(msg);
             out.newLine();
             out.flush();
@@ -3342,12 +4267,175 @@ public class MainActivity extends Activity {
         return b.length() == 0 ? "No scores posted yet. Play a level to rank!" : b.toString();
     }
 
+    int getStudentBestScore() {
+        if (studentName == null || studentName.trim().isEmpty()) return score;
+        int saved = prefs.getInt("highScore_" + studentName, 0);
+        int highest = Math.max(score, saved);
+        if (highest > saved) {
+            prefs.edit().putInt("highScore_" + studentName, highest).apply();
+        }
+        return highest;
+    }
+
     void uploadStudentScoreToLeaderboard() {
-        String host = prefs.getString("serverHost", "127.0.0.1");
+        if (studentName == null || studentName.trim().isEmpty()) return;
+        final int uploadScore = getStudentBestScore();
+        String host = (embeddedServer != null && embeddedServer.isRunning())
+                ? "127.0.0.1"
+                : prefs.getString("serverHost", "127.0.0.1");
         int port = 5050;
         try { port = Integer.parseInt(prefs.getString("serverPort", "5050")); } catch (Exception ignored) {}
         final int finalPort = port;
-        backgroundExecutor.submit(() -> sendServerRequest(host, finalPort, "SCORE|" + sanitizeNetworkString(studentName) + "|" + score));
+        final String finalHost = host;
+        backgroundExecutor.submit(() -> sendServerRequest(finalHost, finalPort, "SCORE|" + sanitizeNetworkString(studentName) + "|" + uploadScore));
+    }
+
+    static String getLocalIpAddress() {
+        try {
+            List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+            // 1. Look for Wi-Fi / AP / Ethernet / Hotspot / Tethering interfaces first
+            for (NetworkInterface nif : interfaces) {
+                if (nif.isLoopback() || !nif.isUp()) continue;
+                String name = nif.getName().toLowerCase();
+                if (name.contains("wlan") || name.contains("ap") || name.contains("swlan") || name.contains("rndis") || name.contains("eth")) {
+                    for (InetAddress addr : Collections.list(nif.getInetAddresses())) {
+                        if (!addr.isLoopbackAddress() && addr instanceof Inet4Address && !addr.isLinkLocalAddress()) {
+                            String ip = addr.getHostAddress();
+                            if (ip != null && !ip.startsWith("127.") && !ip.startsWith("169.254.")) {
+                                return ip;
+                            }
+                        }
+                    }
+                }
+            }
+            // 2. Fallback to any non-loopback, non-link-local IPv4 address (excluding cellular dummy adapters if possible)
+            for (NetworkInterface nif : interfaces) {
+                if (nif.isLoopback() || !nif.isUp()) continue;
+                String name = nif.getName().toLowerCase();
+                if (name.contains("dummy") || name.contains("tun") || name.contains("tap") || name.contains("rmnet")) continue;
+                for (InetAddress addr : Collections.list(nif.getInetAddresses())) {
+                    if (!addr.isLoopbackAddress() && addr instanceof Inet4Address && !addr.isLinkLocalAddress()) {
+                        String ip = addr.getHostAddress();
+                        if (ip != null && !ip.startsWith("127.") && !ip.startsWith("169.254.")) {
+                            return ip;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return "127.0.0.1";
+    }
+
+    static boolean testServerConnection(String host, int port) {
+        if (host == null || host.isEmpty()) return false;
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress(host, port), 400);
+            BufferedWriter out = new BufferedWriter(new OutputStreamWriter(s.getOutputStream(), StandardCharsets.UTF_8));
+            BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
+            out.write("LEADERBOARD");
+            out.newLine();
+            out.flush();
+            String resp = in.readLine();
+            return resp != null && resp.startsWith("BOARD");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    static String discoverServerIp(Context ctx, int targetPort) {
+        // 1. Try UDP broadcast probe (port 5052) with temporary multicast lock
+        android.net.wifi.WifiManager.MulticastLock probeLock = null;
+        if (ctx != null) {
+            try {
+                android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager) ctx.getApplicationContext().getSystemService(WIFI_SERVICE);
+                if (wifi != null) {
+                    probeLock = wifi.createMulticastLock("goquiz_probe_lock");
+                    probeLock.setReferenceCounted(false);
+                    probeLock.acquire();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        String localIp = getLocalIpAddress();
+        String subnet = null;
+        if (localIp != null && !localIp.startsWith("127.")) {
+            int lastDot = localIp.lastIndexOf('.');
+            if (lastDot > 0) subnet = localIp.substring(0, lastDot + 1);
+        }
+
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.setBroadcast(true);
+            socket.setSoTimeout(900);
+            byte[] probe = "GOQUIZ_DISCOVER_PROBE".getBytes(StandardCharsets.UTF_8);
+
+            // Send to global broadcast 255.255.255.255
+            try {
+                socket.send(new DatagramPacket(probe, probe.length, InetAddress.getByName("255.255.255.255"), 5052));
+            } catch (Exception ignored) {}
+
+            // Send to directed subnet broadcast (e.g. 192.168.1.255)
+            if (subnet != null) {
+                try {
+                    socket.send(new DatagramPacket(probe, probe.length, InetAddress.getByName(subnet + "255"), 5052));
+                } catch (Exception ignored) {}
+            }
+
+            byte[] buf = new byte[512];
+            DatagramPacket inPacket = new DatagramPacket(buf, buf.length);
+            socket.receive(inPacket);
+            String resp = new String(inPacket.getData(), 0, inPacket.getLength(), StandardCharsets.UTF_8).trim();
+            if (resp.startsWith("GOQUIZ_SERVER_ANNOUNCE")) {
+                return inPacket.getAddress().getHostAddress();
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (probeLock != null && probeLock.isHeld()) {
+                try { probeLock.release(); } catch (Exception ignored) {}
+            }
+        }
+
+        // 2. Smart Hotspot / Subnet Gateway targets
+        if (subnet != null) {
+            String gatewayIp = subnet + "1";
+            if (!gatewayIp.equals(localIp) && testServerConnection(gatewayIp, targetPort)) {
+                return gatewayIp;
+            }
+
+            if (testServerConnection("127.0.0.1", targetPort)) {
+                return "127.0.0.1";
+            }
+
+            List<String> priorityIps = new ArrayList<>();
+            for (int i = 2; i <= 65; i++) priorityIps.add(subnet + i);
+            for (int i = 100; i <= 165; i++) priorityIps.add(subnet + i);
+            for (int i = 66; i <= 99; i++) priorityIps.add(subnet + i);
+            for (int i = 166; i <= 254; i++) priorityIps.add(subnet + i);
+
+            final String[] foundIp = new String[1];
+            ExecutorService scanner = Executors.newFixedThreadPool(32);
+            for (String ip : priorityIps) {
+                if (ip.equals(localIp)) continue;
+                scanner.submit(() -> {
+                    if (foundIp[0] == null && testServerConnection(ip, targetPort)) {
+                        foundIp[0] = ip;
+                    }
+                });
+            }
+            scanner.shutdown();
+            try {
+                scanner.awaitTermination(1600, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException ignored) {}
+            if (foundIp[0] != null) return foundIp[0];
+        }
+
+        if (testServerConnection("127.0.0.1", targetPort)) {
+            return "127.0.0.1";
+        }
+        return null;
+    }
+
+    static String discoverServerIp(int targetPort) {
+        return discoverServerIp(null, targetPort);
     }
 
     // ==========================================
