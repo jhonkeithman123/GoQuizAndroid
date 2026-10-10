@@ -14,31 +14,30 @@ This is a native Android rebuild based on the uploaded QuizGame.java question ba
 - Responsive ScrollView UI for phones/tablets
 - Shared leaderboard client using QuizServer protocol on port 5050
 
-## Build
-Open this folder in Android Studio and let Gradle sync. Select an Android device and press Run.
+## Quick Commands (Super Beginner Friendly)
 
-### CLI Build Commands:
-- **Debug APK**:
-  ```powershell
-  .\gradlew.bat assembleDebug
-  ```
-  Output: `app/build/outputs/apk/debug/app-debug.apk`
+You can run everything using your custom **`goquiz`** command:
 
-- **Release APK**:
-  ```powershell
-  .\gradlew.bat assembleRelease
-  ```
-  Output: `app/build/outputs/apk/release/app-release.apk`
+### GoQuiz CLI Runner ([`goquiz.bat`](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/goquiz.bat)):
+Type **`goquiz`** in your terminal to open an interactive menu, or pass a command directly:
 
-- **Build & Export Both to Root `apks/` Folder**:
-  ```powershell
-  .\gradlew.bat exportApks
-  ```
-  Output: `apks/app-release.apk` and `apks/app-debug.apk`
+| Command | Action |
+| :--- | :--- |
+| `goquiz` | Opens the interactive visual menu |
+| `goquiz dist` | Builds **FULL Multi-Platform Release** (`dist/GoQuiz-v*.apk` & `.exe`) |
+| `goquiz exe` | Builds **Desktop Windows Executable** into `dist/` |
+| `goquiz release` | Builds **Release APK** into `dist/` (`dist/GoQuiz-v*.apk`) |
+| `goquiz apk` *(or `goquiz build`)* | Builds **BOTH** Debug & Release APKs into `dist/` |
+| `goquiz debug` | Builds **Debug APK** into `dist/` |
+| `goquiz install` | Installs APK to connected phone/emulator and launches game |
+| `goquiz desktop` | Compiles & runs Desktop Java game |
+| `goquiz server` | Starts standalone QuizServer on port 5050 |
+| `goquiz firewall` | Configures Windows Firewall for multiplayer |
+| `goquiz clean` | Cleans Gradle build caches and class files |
+| `goquiz help` | Shows all available commands |
 
-- **Online Leaderboard**:
-  - The Android app can connect to a PC/server running [server/run-server.bat](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/server/run-server.bat).
-  - Alternatively, the Android app can **host its own server directly on the phone** by tapping **HOST SERVER ON THIS DEVICE** in the Leaderboard screen! Other phones can then connect to that phone's IP address.
-  - The desktop Swing version can be run on PC via [desktop/run-desktop.bat](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/desktop/run-desktop.bat).
+
+All individual command scripts are located in the [`scripts/`](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/scripts) folder.
 
 For complete prerequisites, SDK setup, and detailed file map, see [REQUIREMENTS.md](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/REQUIREMENTS.md).
+

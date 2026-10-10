@@ -4,4 +4,4 @@ goquiz.app-packageDebugResources-2 C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\
 goquiz.app-packageDebugResources-3 C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
 goquiz.app-debug-4 C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\build\intermediates\merged_res\debug\mergeDebugResources
 goquiz.app-debug-5 C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\debug\res
-goquiz.app-main-6 C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\main\res
+goquiz.app-src-6 C:\Users\131fgh\Desktop\GoQuizAndroidRebuilt\app\src\res

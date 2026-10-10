@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# GoQuiz Adventure - Central Command Runner (Bash)
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+cmd.exe /c "$DIR\\goquiz.bat" "$@"

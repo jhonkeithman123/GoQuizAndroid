@@ -1,5 +1,16 @@
 plugins { id 'com.android.application' }
 
+// Path Redirection / Alias Resolver (like JavaScript tsconfig/webpack @ or ~ alias)
+def resolvePath(String aliasPath) {
+    if (aliasPath == null) return null
+    if (aliasPath.startsWith('@assets/')) return file("${projectDir}/assets/" + aliasPath.substring(8))
+    if (aliasPath.startsWith('@src/')) return file("${projectDir}/src/" + aliasPath.substring(5))
+    if (aliasPath.startsWith('@/') || aliasPath.startsWith('~/')) {
+        return file("${projectDir}/" + aliasPath.substring(2))
+    }
+    return file("${projectDir}/" + aliasPath)
+}
+
 android { 
     namespace 'goquiz'
     compileSdk 35
@@ -8,13 +19,18 @@ android {
         applicationId 'com.goquiz.adventure'
         minSdk 23
         targetSdk 35
-        versionCode 2
-        versionName '1.1.0' 
+        versionCode 3
+        versionName '1.2.0' 
     }
 
+    // Custom structure: main folder removed, assets moved to app root
+    // Using JavaScript-style path alias '@/' pointing to local app root:
     sourceSets {
         main {
-            java.srcDirs = ['src/main/goquiz']
+            manifest.srcFile resolvePath('@/src/AndroidManifest.xml')
+            java.srcDirs = [resolvePath('@/src')]
+            res.srcDirs = [resolvePath('@/src/res')]
+            assets.srcDirs = [resolvePath('@/assets')]
         }
     }
 
@@ -35,19 +51,88 @@ android {
     }
 }
 
-tasks.register('exportApks') {
-    description = 'Copies compiled APKs to root /apks folder for quick access'
-    dependsOn 'assembleDebug', 'assembleRelease'
+tasks.register('apkDebug') {
+    group = 'build'
+    description = 'Builds Debug APK and copies to dist folder'
+    dependsOn 'assembleDebug'
     doLast {
-        def dest = file("${rootDir}/apks")
-        dest.mkdirs()
-        copy {
-            from "${layout.buildDirectory.get().asFile}/outputs/apk/debug/app-debug.apk"
-            into dest
+        def verName = android.defaultConfig.versionName
+        def versionJsonFile = file("${rootDir}/app/assets/version.json")
+        if (versionJsonFile.exists()) {
+            try {
+                def json = new groovy.json.JsonSlurper().parseText(versionJsonFile.text)
+                if (json.versionName) verName = json.versionName
+            } catch (Exception ignored) {}
         }
-        copy {
-            from "${layout.buildDirectory.get().asFile}/outputs/apk/release/app-release.apk"
-            into dest
+        def distDest = file("${rootDir}/dist")
+        distDest.mkdirs()
+        def src = file("${layout.buildDirectory.get().asFile}/outputs/apk/debug/app-debug.apk")
+        if (src.exists()) {
+            copy {
+                from src
+                into distDest
+                rename { "app-debug.apk" }
+            }
+            copy {
+                from src
+                into distDest
+                rename { "GoQuiz-v${verName}-debug.apk" }
+            }
+            println "\n========================================================"
+            println " [SUCCESS] Android Debug APK is ready in dist!"
+            println " - dist/app-debug.apk"
+            println " - dist/GoQuiz-v${verName}-debug.apk"
+            println "========================================================\n"
         }
     }
 }
+
+tasks.register('apkRelease') {
+    group = 'build'
+    description = 'Builds Release APK and copies to dist folder with version suffix'
+    dependsOn 'assembleRelease'
+    doLast {
+        def verName = android.defaultConfig.versionName
+        def versionJsonFile = file("${rootDir}/app/assets/version.json")
+        if (versionJsonFile.exists()) {
+            try {
+                def json = new groovy.json.JsonSlurper().parseText(versionJsonFile.text)
+                if (json.versionName) verName = json.versionName
+            } catch (Exception ignored) {}
+        }
+        def distDest = file("${rootDir}/dist")
+        distDest.mkdirs()
+        def src = file("${layout.buildDirectory.get().asFile}/outputs/apk/release/app-release.apk")
+        if (src.exists()) {
+            copy {
+                from src
+                into distDest
+                rename { "GoQuiz-v${verName}.apk" }
+            }
+            def oldRelease = file("${distDest}/app-release.apk")
+            if (oldRelease.exists()) oldRelease.delete()
+            println "\n========================================================"
+            println " [SUCCESS] Android Release APK is ready in dist!"
+            println " - dist/GoQuiz-v${verName}.apk"
+            println "========================================================\n"
+        }
+    }
+}
+
+tasks.register('apk') {
+    group = 'build'
+    description = 'Builds BOTH Debug and Release APKs and places them into dist folder'
+    dependsOn 'apkDebug', 'apkRelease'
+    doLast {
+        println "\n========================================================"
+        println " [SUCCESS] Both Debug and Release APKs are ready in dist!"
+        println " - dist/app-debug.apk"
+        println " - dist/app-release.apk"
+        println "========================================================\n"
+    }
+}
+
+tasks.register('exportApks') {
+    dependsOn 'apk'
+}
+

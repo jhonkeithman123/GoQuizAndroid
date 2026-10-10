@@ -4,7 +4,7 @@
             "outputFile": "goquiz.app-mergeDebugResources-2:/values/values.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\131fgh\\Desktop\\GoQuizAndroidRebuilt\\app\\src\\main\\res\\values\\styles.xml",
+                    "source": "C:\\Users\\131fgh\\Desktop\\GoQuizAndroidRebuilt\\app\\src\\res\\values\\styles.xml",
                     "from": {
                         "startLines": "1",
                         "startColumns": "4",

@@ -1,3 +1,39 @@
 plugins {
     id 'com.android.application' version '8.6.1' apply false
 }
+
+// Redirect root build outputs into .tmp/build so root directory stays completely clean
+layout.buildDirectory.set(file("${rootDir}/.tmp/build"))
+
+tasks.register('apk') {
+    group = 'build'
+    description = 'Builds BOTH Debug and Release APKs'
+    dependsOn ':app:apk'
+}
+
+tasks.register('apkDebug') {
+    group = 'build'
+    description = 'Builds Debug APK only'
+    dependsOn ':app:apkDebug'
+}
+
+tasks.register('apkRelease') {
+    group = 'build'
+    description = 'Builds Release APK only'
+    dependsOn ':app:apkRelease'
+}
+
+tasks.register('release') {
+    dependsOn ':app:apkRelease'
+}
+
+tasks.register('debug') {
+    dependsOn ':app:apkDebug'
+}
+
+tasks.register('run') {
+    group = 'application'
+    description = 'Installs and runs the app on connected phone or emulator'
+    dependsOn ':app:installDebug'
+}
+

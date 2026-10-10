@@ -1,0 +1,18 @@
+[v1.2.0] - Cross-Platform Multiplayer & Polish Update
+• Added Cross-Platform 1v1 PvP Live Duels across Android and Desktop.
+• Synchronized cinematics & cutscenes (Intro, Victory, Defeat) in multiplayer.
+• Added Solo Continuation: finish quizzes at your own pace if an opponent disconnects or forfeits.
+• Added manual 'Leave / Solo' forfeit option in duel HUD.
+• High-resolution vector heart icons & custom GUI rendering for desktop.
+• Shared cross-platform version control & changelog system.
+• Standalone Desktop executable (.exe) builder & distribution bundle.
+
+[v1.1.0] - Online Leaderboard & Balance
+• Integrated online global leaderboard server with live LAN synchronization.
+• Multi-difficulty scoring balance (Easy, Medium, Hard).
+• Sound effects & dynamic background camera framing.
+
+[v1.0.0] - Initial Release
+• Full 4-module Computer Science curriculum (HTML, CSS, JavaScript, Java).
+• Interactive story campaign mode with cinematic frame illustrations.
+• Progress auto-saving and badge achievements.

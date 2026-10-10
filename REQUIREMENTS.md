@@ -101,37 +101,42 @@ GoQuizAndroidRebuilt/
 │   ├── app-debug.apk                  # Development APK with debugging enabled
 │   └── app-release.apk                # Optimized Release APK (signed & installable)
 ├── app/                               # Main Android application module
-│   ├── build.gradle                   # App module build configuration, SDK versions, namespace & sourceSets
-│   └── src/
-│       └── main/
-│           ├── AndroidManifest.xml    # App manifest (permissions, main activity, theme, launcher icons)
-│           ├── assets/
-│           │   ├── questions.json     # 480-question categorized bank across 4 languages, 3 difficulties & 5 levels (8 per level)
-│           │   ├── images/            # Packaged icon, wallpaper, and gender-based animation frame folders
-│           │   │   ├── Boy/           # Boy default character frames (Frame1-17, quiz_adventure_background.png)
-│           │   │   ├── Girl/          # Girl character frames & wallpaper (Frame1-17, quiz_adventure_background.jpg)
-│           │   │   └── GoQuiz.ico
-│           │   └── sounds/            # Packaged audio assets
-│           │       ├── click.wav      # Button tap audio feedback
-│           │       ├── damage.wav     # Heart loss sound on wrong answer
-│           │       └── menu_theme.wav # Background soundtrack
-│           ├── goquiz/                # Un-nested Java source directory (directly in src/main/goquiz)
-│           │   ├── MainActivity.java  # Full Android game (all screens, difficulty engine, audio, frame engine)
-│           │   └── QuizServer.java    # Embedded leaderboard server (can host directly on Android)
-│           └── res/
-│               ├── drawable/          # UI drawables (card_panel, btn_fantasy, progress_fantasy, ic_launcher)
-│               ├── drawable-nodpi/    # HD fantasy wallpaper background (quiz_adventure_background.png)
-│               ├── mipmap-*/          # Scaled app launcher icons (MDPI to XXXHDPI)
-│               └── values/styles.xml  # App theme, accent colors, and status bar styles
+│   ├── build.gradle                   # App module build configuration, SDK versions, path alias resolver (@/)
+│   ├── assets/                        # Assets moved to local app root (accessible via @/assets)
+│   │   ├── questions.json             # 480-question categorized bank across 4 languages, 3 difficulties & 5 levels
+│   │   ├── images/                    # Packaged icon, wallpaper, and gender-based animation frame folders
+│   │   │   ├── Boy/                   # Boy default character frames & wallpaper
+│   │   │   ├── Girl/                  # Girl character frames & wallpaper
+│   │   │   ├── GoQuiz.ico
+│   │   │   └── Title.png
+│   │   └── sounds/                    # Packaged audio assets
+│   │       ├── click.wav              # Button tap audio feedback
+│   │       ├── damage.wav             # Heart loss sound on wrong answer
+│   │       └── menu_theme.wav         # Background soundtrack
+│   └── src/                           # Cleaned source root (main folder removed)
+│       ├── AndroidManifest.xml        # App manifest (permissions, main activity, theme, launcher icons)
+│       ├── goquiz/                    # Un-nested Java source directory (src/goquiz)
+│       │   ├── MainActivity.java      # Full Android game (all screens, difficulty engine, audio, frame engine)
+│       │   └── QuizServer.java        # Embedded leaderboard server (can host directly on Android)
+│       └── res/                       # Resource drawables, mipmaps, and themes
+│           ├── drawable/              # UI drawables (card_panel, btn_fantasy, progress_fantasy, ic_launcher)
+│           ├── drawable-nodpi/        # HD fantasy wallpaper background (quiz_adventure_background.png)
+│           ├── mipmap-*/              # Scaled app launcher icons (MDPI to XXXHDPI)
+│           └── values/styles.xml      # App theme, accent colors, and status bar styles
 ├── desktop/                           # Desktop Java Swing edition (for PC players)
 │   ├── QuizGame.java                  # Full Desktop Java Swing edition
-│   ├── QuizServer.java                # Desktop embedded server
-│   ├── run-desktop.bat                # 1-Click launcher for desktop edition
-│   └── *.properties                   # Desktop accounts and progress storage
+│   └── QuizServer.java                # Desktop embedded server
 ├── server/                            # Standalone PC Leaderboard Server
 │   ├── QuizServer.java                # Pure Java socket server (port 5050)
-│   ├── run-server.bat                 # 1-Click launcher to run QuizServer on PC
 │   └── online_leaderboard.properties  # Stored student rankings
+├── scripts/                           # Centralized scripts directory
+│   ├── build-apk.bat                  # Build & export Android APK
+│   ├── install-app.bat                # Install & launch on Android phone/emulator
+│   ├── run-desktop.bat                # Compile & run Desktop Java game
+│   ├── run-server.bat                 # Run standalone QuizServer
+│   ├── allow-firewall.bat             # Configure Windows Defender Firewall
+│   └── clean.bat                      # Clean build caches & temporary files
+├── goquiz.bat                         # Centralized GoQuiz CLI runner (run `goquiz` for menu)
 ├── gradle/wrapper/                    # Gradle wrapper binaries & distribution configuration
 │   ├── gradle-wrapper.jar
 │   └── gradle-wrapper.properties
