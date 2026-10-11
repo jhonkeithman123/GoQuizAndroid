@@ -5870,246 +5870,123 @@ public class QuizGame extends JFrame {
     // =========================
     private void showQuestion() {
 
-        if (currentQuestion
-                >= questions.size()) {
-
+        if (currentQuestion >= questions.size()) {
             showVictoryCinematic(this::completeCurrentLevel);
-
             return;
         }
 
-        BackgroundPanel panel =
-                createBackgroundPanel("Frame7.jpg");
+        BackgroundPanel panel = createBackgroundPanel("Frame7.jpg");
         currentQuizPanel = panel;
         applyFrameCameraFocus("Frame7.jpg");
 
-        panel.setLayout(
-                new BorderLayout()
+        panel.setLayout(new BorderLayout());
+
+        JPanel hud = new FantasyPanel();
+        hud.setLayout(new BorderLayout());
+        hud.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
+
+        JLabel heartsLabel = new JLabel(
+                "HP: ",
+                getHeartsIcon(hearts, getStartingHearts(), 24),
+                SwingConstants.LEFT
         );
-
-        JPanel hud =
-                new FantasyPanel();
-
-        hud.setLayout(
-                new BorderLayout()
-        );
-
-        hud.setBorder(
-                BorderFactory.createEmptyBorder(
-                        10,
-                        22,
-                        10,
-                        22
-                )
-        );
-
-        JLabel heartsLabel =
-                new JLabel(
-                        "HP: ",
-                        getHeartsIcon(hearts, getStartingHearts(), 24),
-                        SwingConstants.LEFT
-                );
         currentHeartsLabel = heartsLabel;
+        heartsLabel.setFont(pixelFont(Font.BOLD, 17));
+        heartsLabel.setForeground(new Color(255, 90, 90));
 
-        heartsLabel.setFont(
-                pixelFont(
-                        Font.BOLD,
-                        18
-                )
+        JPanel westBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+        westBar.setOpaque(false);
+
+        JButton menuBtn = createCompactFantasyButton("🏠 MENU", 96, 32);
+        menuBtn.setFont(pixelFont(Font.BOLD, 12));
+        menuBtn.addActionListener(e -> {
+            int res = JOptionPane.showConfirmDialog(
+                    this,
+                    "Quit this level and return to level selection?\nYour current level score will not be saved.",
+                    "Exit to Menu",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE
+            );
+            if (res == JOptionPane.YES_OPTION) {
+                showLevelSelection();
+            }
+        });
+        westBar.add(menuBtn);
+        westBar.add(heartsLabel);
+
+        JLabel questionNumber = new JLabel(
+                selectedLanguage
+                        + "  •  " + difficulty.toUpperCase()
+                        + "  •  Level "
+                        + currentLevel
+                        + "  •  Question "
+                        + (currentQuestion + 1)
+                        + "/"
+                        + questions.size(),
+                SwingConstants.CENTER
         );
+        questionNumber.setFont(pixelFont(Font.BOLD, 17));
+        questionNumber.setForeground(TEXT);
 
-        heartsLabel.setForeground(
-                new Color(
-                        255,
-                        90,
-                        90
-                )
-        );
+        JLabel scoreLabel = new JLabel("Score: " + score);
+        scoreLabel.setFont(pixelFont(Font.BOLD, 19));
+        scoreLabel.setForeground(GOLD_LIGHT);
 
-        JLabel questionNumber =
-                new JLabel(
-                        selectedLanguage
-                                + "  •  " + difficulty.toUpperCase()
-                                + "  •  Level "
-                                + currentLevel
-                                + "  •  Question "
-                                + (currentQuestion + 1)
-                                + "/"
-                                + questions.size(),
-                        SwingConstants.CENTER
-                );
+        hud.add(westBar, BorderLayout.WEST);
+        hud.add(questionNumber, BorderLayout.CENTER);
+        hud.add(scoreLabel, BorderLayout.EAST);
 
-        questionNumber.setFont(
-                pixelFont(
-                        Font.BOLD,
-                        18
-                )
-        );
+        panel.add(hud, BorderLayout.NORTH);
 
-        questionNumber.setForeground(
-                TEXT
-        );
-
-        JLabel scoreLabel =
-                new JLabel(
-                        "Score: " + score
-                );
-
-        scoreLabel.setFont(
-                pixelFont(
-                        Font.BOLD,
-                        20
-                )
-        );
-
-        scoreLabel.setForeground(
-                TEXT
-        );
-
-        hud.add(
-                heartsLabel,
-                BorderLayout.WEST
-        );
-
-        hud.add(
-                questionNumber,
-                BorderLayout.CENTER
-        );
-
-        hud.add(
-                scoreLabel,
-                BorderLayout.EAST
-        );
-
-        panel.add(
-                hud,
-                BorderLayout.NORTH
-        );
-
-        AlphaPanel center =
-                new AlphaPanel();
+        AlphaPanel center = new AlphaPanel();
         currentQuizCenterPanel = center;
-
         center.setOpaque(false);
+        center.setLayout(new BoxLayout(center, BoxLayout.Y_AXIS));
+        center.setBorder(BorderFactory.createEmptyBorder(14, 55, 14, 55));
 
-        center.setLayout(
-                new BoxLayout(
-                        center,
-                        BoxLayout.Y_AXIS
-                )
-        );
+        Question q = questions.get(currentQuestion);
 
-        center.setBorder(
-                BorderFactory.createEmptyBorder(
-                        25,
-                        75,
-                        20,
-                        75
-                )
-        );
+        JPanel questionBox = new FantasyPanel();
+        questionBox.setLayout(new BorderLayout());
+        questionBox.setBorder(BorderFactory.createEmptyBorder(18, 28, 18, 28));
+        questionBox.setMaximumSize(new Dimension(880, 240));
+        questionBox.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        Question q =
-                questions.get(
-                        currentQuestion
-                );
-
-        JPanel questionBox =
-                new FantasyPanel();
-
-        questionBox.setLayout(
-                new GridBagLayout()
-        );
-
-        questionBox.setBorder(
-                BorderFactory.createEmptyBorder(
-                        22,
-                        35,
-                        22,
-                        35
-                )
-        );
-
-        questionBox.setMaximumSize(
-                new Dimension(
-                        900,
-                        400
-                )
-        );
-
-        questionBox.setAlignmentX(
-                Component.CENTER_ALIGNMENT
-        );
-
-        JLabel questionText =
-                new JLabel(
-                        wrapHtml(q.question, 780, "left"),
-                        SwingConstants.LEFT
-                );
-
-        questionText.setFont(
-                pixelFont(
-                        Font.BOLD,
-                        23
-                )
-        );
-
-        questionText.setForeground(
-                TEXT
-        );
-
-        questionBox.add(
-                questionText
-        );
-
-        center.add(
-                questionBox
-        );
-
-        center.add(
-                Box.createVerticalStrut(
-                        20
-                )
-        );
-
-        JButton[] buttons =
-                new JButton[4];
-
-        for (int i = 0;
-             i < 4;
-             i++) {
-
-            buttons[i] =
-                    createAnswerButton(
-                            (char) ('A' + i)
-                                    + "   "
-                                    + q.choices[i]
-                    );
-
-            final int selected =
-                    i;
-
-            buttons[i].addActionListener(
-                    e -> checkAnswer(
-                            selected,
-                            buttons
-                    )
-            );
-
-            center.add(
-                    buttons[i]
-            );
-
-            center.add(
-                    Box.createVerticalStrut(
-                            9
-                    )
-            );
+        int qLen = (q.question != null) ? q.question.length() : 0;
+        int fontSize = 21;
+        if (qLen > 115) {
+            fontSize = 17;
+        } else if (qLen > 65) {
+            fontSize = 19;
         }
 
-        panel.add(
-                center,
-                BorderLayout.CENTER
+        JLabel questionText = new JLabel(
+                wrapHtml(q.question, 780, "left"),
+                SwingConstants.LEFT
         );
+        questionText.setFont(pixelFont(Font.BOLD, fontSize));
+        questionText.setForeground(TEXT);
+
+        questionBox.add(questionText, BorderLayout.CENTER);
+
+        center.add(questionBox);
+        center.add(Box.createVerticalStrut(14));
+
+        JButton[] buttons = new JButton[4];
+
+        for (int i = 0; i < 4; i++) {
+            buttons[i] = createAnswerButton(
+                    (char) ('A' + i),
+                    q.choices[i]
+            );
+
+            final int selected = i;
+            buttons[i].addActionListener(e -> checkAnswer(selected, buttons));
+            center.add(buttons[i]);
+            center.add(Box.createVerticalStrut(8));
+        }
+
+        panel.add(center, BorderLayout.CENTER);
 
         changeScreen(panel);
         animateQuestionEntrance(center);
@@ -6216,10 +6093,12 @@ public class QuizGame extends JFrame {
             );
         }
 
-        button.setText(
-                button.getText()
-                        + "  ✓"
-        );
+        String t = button.getText();
+        if (t != null && t.endsWith("</html>")) {
+            button.setText(t.substring(0, t.length() - 7) + " &nbsp; <font color='#90EE90'><b>✓</b></font></html>");
+        } else {
+            button.setText((t != null ? t : "") + "  ✓");
+        }
     }
 
     // =========================
@@ -6240,10 +6119,12 @@ public class QuizGame extends JFrame {
             );
         }
 
-        button.setText(
-                button.getText()
-                        + "  ✗"
-        );
+        String t = button.getText();
+        if (t != null && t.endsWith("</html>")) {
+            button.setText(t.substring(0, t.length() - 7) + " &nbsp; <font color='#FF8888'><b>✗</b></font></html>");
+        } else {
+            button.setText((t != null ? t : "") + "  ✗");
+        }
     }
 
     // =========================
@@ -7372,6 +7253,24 @@ public class QuizGame extends JFrame {
     // =========================
     // ANSWER BUTTON
     // =========================
+    private JButton createAnswerButton(char letter, String choiceText) {
+        String safeChoice = escapeHtml(choiceText != null ? choiceText : "");
+        String html = "<html><table width='780' cellpadding='0' cellspacing='0'><tr>"
+                + "<td align='left' style='font-family:sans-serif; font-size:14px; color:#F5F1E2;'>"
+                + "<font color='#FFCA4E'><b>" + letter + ".</b></font> &nbsp; "
+                + safeChoice + "</td></tr></table></html>";
+        JButton button = new FantasyButton(html);
+        button.setPreferredSize(new Dimension(840, 52));
+        button.setMaximumSize(new Dimension(880, 68));
+        button.setMinimumSize(new Dimension(600, 48));
+        button.setAlignmentX(Component.CENTER_ALIGNMENT);
+        button.setHorizontalAlignment(SwingConstants.LEFT);
+        button.setVerticalAlignment(SwingConstants.CENTER);
+        button.setFont(pixelFont(Font.BOLD, 15));
+        button.setBorder(BorderFactory.createEmptyBorder(8, 22, 8, 22));
+        return button;
+    }
+
     private JButton createAnswerButton(String text) {
         JButton button = new FantasyButton(text);
         button.setPreferredSize(new Dimension(840, 52));
@@ -7381,7 +7280,7 @@ public class QuizGame extends JFrame {
         button.setHorizontalAlignment(SwingConstants.LEFT);
         button.setVerticalAlignment(SwingConstants.CENTER);
         button.setFont(pixelFont(Font.BOLD, 15));
-        button.setBorder(BorderFactory.createEmptyBorder(10, 22, 10, 22));
+        button.setBorder(BorderFactory.createEmptyBorder(8, 22, 8, 22));
         return button;
     }
 
@@ -7394,15 +7293,12 @@ public class QuizGame extends JFrame {
 
     private String wrapHtml(String text, int width, String align) {
         if (text == null) return "";
-        String escaped = text
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;");
-
-        if ("left".equalsIgnoreCase(align)) {
-            return "<html><div style='text-align:left;'>" + escaped.replace("\n", "<br>") + "</div></html>";
-        }
-        return "<html><center>" + escaped.replace("\n", "<br>") + "</center></html>";
+        String escaped = escapeHtml(text).replace("\n", "<br>");
+        String alignAttr = ("left".equalsIgnoreCase(align)) ? "left" : "center";
+        int tableWidth = (width > 0) ? width : 740;
+        return "<html><table width='" + tableWidth + "' cellpadding='0' cellspacing='0'>"
+                + "<tr><td align='" + alignAttr + "' style='color:#F5F1E2; font-family:sans-serif;'>"
+                + escaped + "</td></tr></table></html>";
     }
 
     // =========================
