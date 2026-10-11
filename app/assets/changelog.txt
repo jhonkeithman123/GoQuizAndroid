@@ -1,3 +1,10 @@
+[v1.2.1] - Desktop Launcher Compatibility & Zero-Dependency Update
+• Bundled self-contained Java 17 portable runtime (jre) into the Windows release bundle for zero-dependency execution.
+• Added runtime protection against "Java Virtual Machine Launcher" errors on PCs running older Java 8 runtimes.
+• Added automatic extraction detection to guide users if the launcher is opened directly inside an unextracted ZIP.
+• Packaged game assets (graphics, questions, sound effects) directly into the desktop bundle.
+• Hardened native Windows launcher with immediate crash detection and diagnostics.
+
 [v1.2.0] - Cross-Platform Multiplayer & Polish Update
 • Added Cross-Platform 1v1 PvP Live Duels across Android and Desktop.
 • Synchronized cinematics & cutscenes (Intro, Victory, Defeat) in multiplayer.

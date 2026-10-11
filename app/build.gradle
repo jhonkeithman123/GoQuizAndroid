@@ -19,8 +19,8 @@ android {
         applicationId 'com.goquiz.adventure'
         minSdk 23
         targetSdk 35
-        versionCode 3
-        versionName '1.2.0' 
+        versionCode 4
+        versionName '1.2.1' 
     }
 
     // Custom structure: main folder removed, assets moved to app root

@@ -14,7 +14,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-set "VER_NAME=1.2.0"
+set "VER_NAME=1.2.1"
 for /f "tokens=2 delims=:, " %%a in ('findstr /i "versionName" app\assets\version.json 2^>nul') do (
     set "RAW_VER=%%~a"
     set "RAW_VER=!RAW_VER:"=!"
@@ -49,12 +49,33 @@ if exist %CSC% (
 
 del /q "dist\GoQuiz.exe" "dist\GoQuizAdventure.jar" 2>nul
 
-echo [4/4] Compressing desktop release bundle...
-powershell -NoProfile -Command "Compress-Archive -Path 'dist\GoQuiz-v!VER_NAME!.exe', 'dist\GoQuiz-v!VER_NAME!.jar' -DestinationPath 'dist\GoQuiz-v!VER_NAME!-Windows.zip' -Force"
+echo [4/5] Generating portable zero-dependency Java 17 runtime...
+set "HAS_JRE=0"
+where jlink >nul 2>nul
+if %errorlevel% equ 0 (
+    if exist "dist\jre" rmdir /s /q "dist\jre"
+    jlink --add-modules java.base,java.desktop --strip-debug --no-man-pages --no-header-files --compress=2 --output "dist\jre"
+    if exist "dist\jre\bin\javaw.exe" set "HAS_JRE=1"
+)
+
+echo [5/5] Compressing complete desktop release bundle...
+if exist "dist\app" rmdir /s /q "dist\app"
+mkdir "dist\app\assets" 2>nul
+xcopy /e /i /y "app\assets" "dist\app\assets" >nul
+
+if "!HAS_JRE!"=="1" (
+    powershell -NoProfile -Command "Compress-Archive -Path 'dist\GoQuiz-v!VER_NAME!.exe', 'dist\app', 'dist\jre' -DestinationPath 'dist\GoQuiz-v!VER_NAME!-Windows.zip' -Force"
+    rmdir /s /q "dist\jre"
+    rmdir /s /q "dist\app"
+    echo [SUCCESS] Bundled portable Java 17 and assets into dist\GoQuiz-v!VER_NAME!-Windows.zip - zero install required
+) else (
+    powershell -NoProfile -Command "Compress-Archive -Path 'dist\GoQuiz-v!VER_NAME!.exe', 'dist\app' -DestinationPath 'dist\GoQuiz-v!VER_NAME!-Windows.zip' -Force"
+    rmdir /s /q "dist\app"
+)
 
 echo ===================================================
 echo [SUCCESS] Desktop distribution ready in dist\:
-echo   - dist\GoQuiz-v!VER_NAME!.exe       (Standalone launcher with embedded game JAR)
-echo   - dist\GoQuiz-v!VER_NAME!-Windows.zip (Compressed bundle)
-echo   - dist\GoQuiz-v!VER_NAME!.jar       (Cross-platform runnable package)
+echo   - dist\GoQuiz-v!VER_NAME!-Windows.zip (Zero-setup bundle - runs on any PC with no Java needed)
+echo   - dist\GoQuiz-v!VER_NAME!.exe         (Standalone launcher with embedded game JAR)
+echo   - dist\GoQuiz-v!VER_NAME!.jar         (Cross-platform runnable package for Mac/Linux)
 echo ===================================================
