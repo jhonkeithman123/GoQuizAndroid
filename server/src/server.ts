@@ -119,7 +119,7 @@ async function loadLeaderboard(): Promise<void> {
   if (propFile) {
     try {
       const content = fs.readFileSync(propFile, 'utf-8');
-      content.split(/\r?\n/).forEach((line) => {
+      content.split(/\r?\n/).forEach((line: string) => {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith('#')) return;
         const eqIdx = trimmed.indexOf('=');
@@ -697,352 +697,415 @@ app.get('/api/stats', (req: Request, res: Response) => {
   });
 });
 
-// Live Interactive Web Status Dashboard
+// Restricted Console / Terminal Theme Interface
 app.get('/', (req: Request, res: Response) => {
-  const sorted = getSortedLeaderboard().slice(0, 15);
+  const sorted = getSortedLeaderboard().slice(0, 10);
   const openRooms = Array.from(rooms.values()).filter(r => !r.finished);
 
   const leaderboardRows = sorted.length > 0 ? sorted.map((entry, i) => {
-    const medal = i === 0 ? '🥇' : (i === 1 ? '🥈' : (i === 2 ? '🥉' : `#${i + 1}`));
-    return `
-      <tr>
-        <td style="font-weight: bold; color: ${i < 3 ? '#fbbf24' : '#94a3b8'};">${medal}</td>
-        <td style="font-weight: 600; color: #f8fafc;">${clean(entry.name)}</td>
-        <td style="font-weight: 700; color: #38bdf8; text-align: right;">${entry.score.toLocaleString()} pts</td>
-      </tr>
-    `;
-  }).join('') : `<tr><td colspan="3" style="text-align:center; color:#64748b; padding:16px;">No high scores recorded yet!</td></tr>`;
+    const rankStr = String(i + 1).padStart(2, '0');
+    const nameStr = clean(entry.name).padEnd(16, ' ').slice(0, 16);
+    const scoreStr = `${entry.score.toLocaleString()} pts`.padStart(10, ' ');
+    return `[${rankStr}]  ${nameStr}  ${scoreStr}  (${entry.gender})`;
+  }).join('\n') : '[--]  No entries recorded in database yet.';
 
-  const roomCards = openRooms.length > 0 ? openRooms.map(r => `
-    <div class="room-chip ${r.active ? 'in-duel' : 'waiting'}">
-      <div class="room-code">#${r.code}</div>
-      <div class="room-details">
-        <strong>${clean(r.hostName)}</strong>
-        <span class="badge ${r.language.toLowerCase()}">${r.language}</span>
-        <span class="badge diff">${r.difficulty}</span>
-      </div>
-      <div class="room-status">${r.active ? '⚔️ In Duel' : '⏳ Waiting...'}</div>
-    </div>
-  `).join('') : '<p style="color:#64748b; font-style:italic;">No live rooms currently open. Create one in the app!</p>';
-
-  const dbBadge = supabase
-    ? `<span style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.5); color: #34d399; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;">⚡ Supabase Cloud PostgreSQL</span>`
-    : `<span style="background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.5); color: #fbbf24; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;">📁 Local Disk Cache</span>`;
+  const roomsListText = openRooms.length > 0 ? openRooms.map(r => {
+    const status = r.active ? 'IN_MATCH' : 'WAITING';
+    return `> ROOM #${r.code.padEnd(5, ' ')} HOST: ${clean(r.hostName).padEnd(12, ' ')} LANG: ${r.language.padEnd(10, ' ')} DIFF: ${r.difficulty.padEnd(8, ' ')} [${status}]`;
+  }).join('\n') : '> No active rooms currently open on this node.';
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GoQuiz Adventure — Global Multiplayer Cloud Gateway</title>
+  <title>GoQuiz Adventure — Gateway Telemetry Console</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #090d16;
-      --card-bg: rgba(22, 30, 49, 0.75);
-      --border: rgba(56, 189, 248, 0.2);
-      --gold: #f59e0b;
-      --cyan: #38bdf8;
-      --accent: #6366f1;
-      --text: #f1f5f9;
-      --muted: #94a3b8;
+      --bg: #090c10;
+      --terminal-bg: #0d1117;
+      --border: #30363d;
+      --green: #2ea043;
+      --bright-green: #3fb950;
+      --amber: #d29922;
+      --red: #f85149;
+      --cyan: #58a6ff;
+      --muted: #8b949e;
+      --text: #c9d1d9;
+      --glow: rgba(46, 160, 67, 0.15);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, var(--bg) 60%);
+      background-color: var(--bg);
       color: var(--text);
-      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 24px 16px;
       min-height: 100vh;
-      padding: 30px 20px;
       display: flex;
       flex-direction: column;
       align-items: center;
+      line-height: 1.5;
     }
-    .container {
-      max-width: 1040px;
+    .wrapper {
+      max-width: 980px;
       width: 100%;
     }
-    header {
-      text-align: center;
-      margin-bottom: 35px;
+    /* ACCESS WARNING BANNER */
+    .warning-banner {
+      background: rgba(248, 81, 73, 0.1);
+      border: 1px solid var(--red);
+      border-left: 5px solid var(--red);
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      font-size: 13px;
     }
-    .pill {
-      display: inline-flex;
+    .warning-title {
+      color: var(--red);
+      font-weight: 700;
+      display: flex;
       align-items: center;
       gap: 8px;
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid rgba(16, 185, 129, 0.4);
-      color: #34d399;
-      font-size: 13px;
-      font-weight: 700;
-      padding: 6px 14px;
-      border-radius: 9999px;
-      margin-bottom: 14px;
+      margin-bottom: 6px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    .pulse-dot {
-      width: 8px;
-      height: 8px;
-      background: #10b981;
+    .warning-body {
+      color: #e6edf3;
+      font-size: 12.5px;
+    }
+    .warning-body strong { color: #fff; }
+
+    /* CONSOLE WINDOW */
+    .terminal-window {
+      background: var(--terminal-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 16px 45px rgba(0, 0, 0, 0.7);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .terminal-header {
+      background: #161b22;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+    .terminal-buttons {
+      display: flex;
+      gap: 7px;
+    }
+    .btn-dot {
+      width: 11px;
+      height: 11px;
       border-radius: 50%;
-      box-shadow: 0 0 10px #10b981;
-      animation: pulse 1.5s infinite;
     }
-    @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
-    h1 {
-      font-size: clamp(2rem, 4vw, 3rem);
-      font-weight: 800;
-      background: linear-gradient(135deg, #ffffff 0%, #38bdf8 60%, #818cf8 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 10px;
-    }
-    .subtitle {
+    .dot-red { background: #ff5f56; }
+    .dot-yellow { background: #ffbd2e; }
+    .dot-green { background: #27c93f; }
+    .terminal-title {
+      font-size: 12px;
       color: var(--muted);
-      font-size: 16px;
-      max-width: 600px;
-      margin: 0 auto;
+      font-weight: 600;
     }
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
-      margin-bottom: 25px;
-    }
-    .metric-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 16px;
+    .terminal-body {
       padding: 20px;
-      backdrop-filter: blur(12px);
-      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
-    }
-    .metric-label { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-    .metric-value { font-size: 32px; font-weight: 800; color: #fff; font-family: 'JetBrains Mono', monospace; }
-    .main-grid {
-      display: grid;
-      grid-template-columns: 1.2fr 1fr;
-      gap: 25px;
-      margin-bottom: 25px;
-    }
-    @media (max-width: 768px) {
-      .main-grid { grid-template-columns: 1fr; }
-    }
-    .panel {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 24px;
-      backdrop-filter: blur(14px);
-      box-shadow: 0 10px 35px rgba(0,0,0,0.45);
-    }
-    .panel-title {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-      padding-bottom: 12px;
-    }
-    table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; font-size: 12px; color: var(--muted); padding-bottom: 10px; text-transform: uppercase; }
-    td { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 15px; }
-    .room-chip {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 12px;
-      padding: 12px 16px;
-      margin-bottom: 10px;
-    }
-    .room-chip.waiting { border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.05); }
-    .room-chip.in-duel { border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.05); }
-    .room-code { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 800; color: #fbbf24; }
-    .badge {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      text-transform: uppercase;
-      margin-left: 6px;
-    }
-    .badge.html { background: #e44d26; color: #fff; }
-    .badge.css { background: #264de4; color: #fff; }
-    .badge.js { background: #f7df1e; color: #000; }
-    .badge.diff { background: rgba(255,255,255,0.1); color: #cbd5e1; }
-    .test-box {
-      background: rgba(0,0,0,0.3);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px;
-      padding: 14px;
-      margin-top: 14px;
-      font-family: 'JetBrains Mono', monospace;
       font-size: 13px;
     }
-    .btn-ping {
-      background: #38bdf8;
-      color: #0f172a;
-      border: none;
-      font-weight: 700;
-      padding: 8px 16px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-family: 'Outfit', sans-serif;
-      margin-top: 8px;
+
+    /* ASCII ART */
+    .ascii-art {
+      color: var(--bright-green);
+      font-size: 11.5px;
+      line-height: 1.15;
+      white-space: pre;
+      margin-bottom: 16px;
+      user-select: none;
     }
-    .btn-ping:hover { background: #7dd3fc; }
+
+    /* TELEMETRY GRIDS */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+      margin: 18px 0;
+    }
+    .status-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 14px;
+    }
+    .status-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .status-value {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .status-value.ok { color: var(--bright-green); }
+    .status-value.cyan { color: var(--cyan); }
+    .status-value.amber { color: var(--amber); }
+
+    /* SECTION BOXES */
+    .section-title {
+      color: var(--cyan);
+      font-size: 13px;
+      font-weight: 700;
+      margin: 18px 0 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .code-block {
+      background: #040608;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-size: 12.5px;
+      color: #e6edf3;
+      white-space: pre-wrap;
+      overflow-x: auto;
+      margin-bottom: 14px;
+    }
+
+    /* ACTIONS BAR */
+    .actions-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .cmd-btn {
+      background: #21262d;
+      color: #e6edf3;
+      border: 1px solid var(--border);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .cmd-btn:hover {
+      background: #30363d;
+      border-color: #8b949e;
+      color: #fff;
+    }
+    .cmd-btn.primary {
+      background: rgba(46, 160, 67, 0.2);
+      border-color: var(--green);
+      color: var(--bright-green);
+    }
+    .cmd-btn.primary:hover {
+      background: rgba(46, 160, 67, 0.35);
+    }
+    .live-feed {
+      background: #020406;
+      border: 1px solid #161b22;
+      border-radius: 6px;
+      padding: 12px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--bright-green);
+      min-height: 50px;
+      max-height: 160px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .prompt { color: var(--amber); font-weight: 700; }
+
     footer {
       text-align: center;
-      font-size: 13px;
+      font-size: 11.5px;
       color: var(--muted);
-      margin-top: 25px;
+      margin-top: 16px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div class="pill"><span class="pulse-dot"></span> Render Cloud Relay Active</div>
-      <h1>GoQuiz Adventure</h1>
-      <p class="subtitle">Real-time Cross-Platform Multiplayer Gateway & Global Leaderboard for Android and Desktop.</p>
-      <div style="margin-top: 12px;">${dbBadge}</div>
-    </header>
-
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="metric-label">👥 Players Online</div>
-        <div class="metric-value">${activeSessions.size}</div>
+  <div class="wrapper">
+    <!-- RESTRICTED ACCESS NOTICE -->
+    <div class="warning-banner">
+      <div class="warning-title">
+        <span>🛑 RESTRICTED ACCESS — BACKEND INFRASTRUCTURE SERVICE</span>
       </div>
-      <div class="metric-card">
-        <div class="metric-label">⚔️ Active Rooms</div>
-        <div class="metric-value">${rooms.size}</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">🏆 Total Scores</div>
-        <div class="metric-value">${leaderboard.size}</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">🔥 Duels Completed</div>
-        <div class="metric-value">${totalDuelsCompleted}</div>
+      <div class="warning-body">
+        This host is a dedicated <strong>WebSocket & REST Gateway Relay</strong> for the GoQuiz Adventure game engine.<br>
+        <strong>Not for direct web browser gaming:</strong> Regular users and students cannot play from this page. To play, launch the native <strong>Android APK</strong> or <strong>Windows Desktop (.exe)</strong> client.
       </div>
     </div>
 
-    <div class="main-grid">
-      <!-- LEADERBOARD PANEL -->
-      <div class="panel">
-        <div class="panel-title">
-          <span>👑 Global Hall of Fame</span>
-          <span style="font-size: 12px; color: var(--muted); font-weight: normal;">Top Champions</span>
+    <!-- TERMINAL / CONSOLE WINDOW -->
+    <div class="terminal-window">
+      <div class="terminal-header">
+        <div class="terminal-buttons">
+          <span class="btn-dot dot-red"></span>
+          <span class="btn-dot dot-yellow"></span>
+          <span class="btn-dot dot-green"></span>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 50px;">Rank</th>
-              <th>Player</th>
-              <th style="text-align: right;">Highest Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${leaderboardRows}
-          </tbody>
-        </table>
+        <div class="terminal-title">admin@goquiz-relay-core: ~ (PID: ${process.pid || 1})</div>
+        <div style="font-size: 11px; color: var(--bright-green);">● ONLINE</div>
       </div>
 
-      <!-- ACTIVE ROOMS & TEST PANEL -->
-      <div class="panel">
-        <div class="panel-title">
-          <span>⚔️ Live Rooms</span>
-          <span style="font-size: 12px; color: var(--muted); font-weight: normal;">${openRooms.length} Active</span>
-        </div>
-        <div class="rooms-container">
-          ${roomCards}
+      <div class="terminal-body">
+        <!-- ASCII HEADER -->
+        <div class="ascii-art">
+   ______        ____        _         ___       __                 __                  
+  / ____/____   / __ \ __  _(_)____   /   | ____/ /   _____  ____  / /___  __________   
+ / / __ / __ \ / / / // / / // /_  /  / /| |/ __  / | / / _ \/ __ \/ __/ / / / ___/ _ \  
+/ /_/ // /_/ // /_/ // /_/ // / / /_ / ___ / /_/ /| |/ /  __/ / / / /_/ /_/ / /  /  __/  
+\____/ \____/ \___\_\\__,_//_/ /___//_/  |_\__,_/ |___/\___/_/ /_/\__/\__,_/_/   \___/   
+========================================================================================
+[GATEWAY NODE // CLOUD MULTIPLAYER & LEADERBOARD RELAY] • VER: 1.2.1 • PLATFORM: RENDER</div>
+
+        <!-- TELEMETRY METRICS GRID -->
+        <div class="status-grid">
+          <div class="status-card">
+            <div class="status-label">Gateway Status</div>
+            <div class="status-value ok">● ACTIVE (HTTP/WS)</div>
+          </div>
+          <div class="status-card">
+            <div class="status-label">Database Store</div>
+            <div class="status-value cyan">${supabase ? 'SUPABASE POSTGRESQL' : 'LOCAL CACHE'}</div>
+          </div>
+          <div class="status-card">
+            <div class="status-label">Live Sockets</div>
+            <div class="status-value amber">${activeSessions.size} CONNECTED</div>
+          </div>
+          <div class="status-card">
+            <div class="status-label">Active Duels</div>
+            <div class="status-value">${rooms.size} OPEN ROOMS</div>
+          </div>
+          <div class="status-card">
+            <div class="status-label">Process Memory</div>
+            <div class="status-value">${Math.round(process.memoryUsage().rss / (1024 * 1024))} MB RSS</div>
+          </div>
+          <div class="status-card">
+            <div class="status-label">Duels Completed</div>
+            <div class="status-value ok">${totalDuelsCompleted} MATCHES</div>
+          </div>
         </div>
 
-        <div style="margin-top: 24px;">
-          <div class="panel-title" style="margin-bottom: 8px;">
-            <span>📡 Live WebSocket Tester</span>
-          </div>
-          <p style="font-size: 13px; color: var(--muted); margin-bottom: 8px;">
-            Test your real-time WebSocket connection to this server:
-          </p>
-          <div class="test-box" id="test-console">Connecting WebSocket...</div>
-          <button class="btn-ping" onclick="pingServer()">Send Ping</button>
-        </div>
+        <!-- CLIENT APPLICATION INSTRUCTIONS -->
+        <div class="section-title">📦 NATIVE CLIENT APPLICATIONS</div>
+        <div class="code-block">┌─────────────────────────────────────────────────────────────────────────────────┐
+│ [Android] Run GoQuiz-v1.2.1.apk on phones/tablets (Connects via WebSocket/WSS)  │
+│ [Windows] Run GoQuiz-v1.2.1.exe on desktop/laptop PCs                           │
+│ [Server]  Hosted on Render Web Services • Port 443 / 10000                      │
+└─────────────────────────────────────────────────────────────────────────────────┘</div>
 
-        <div style="margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
-          <div class="panel-title" style="margin-bottom: 8px;">
-            <span>⏰ Render Anti-Sleep Cron API</span>
-          </div>
-          <p style="font-size: 13px; color: var(--muted); margin-bottom: 8px;">
-            Use this endpoint in free cron tools (e.g. <a href="https://cron-job.org" target="_blank" style="color:#38bdf8; text-decoration:none;">cron-job.org</a> or <a href="https://uptimerobot.com" target="_blank" style="color:#38bdf8; text-decoration:none;">UptimeRobot</a>) every 10 mins to keep Render awake 24/7:
-          </p>
-          <div class="test-box" style="color: #38bdf8; font-weight: bold;" id="cron-url">/api/keep-alive</div>
-          <button class="btn-ping" style="background:#10b981; color:#fff;" onclick="testKeepAlive()">⚡ Test Keep-Alive API</button>
-          <div class="test-box" id="cron-console" style="display:none; margin-top:8px;"></div>
+        <!-- CRON & KEEP-ALIVE INTERFACE -->
+        <div class="section-title">⏰ ANTI-SLEEP CRON CONFIGURATION (KEEP RENDER AWAKE)</div>
+        <div class="code-block" id="cron-target-box">$ curl -X GET <span id="keep-alive-endpoint" style="color:var(--bright-green);">https://goquiz-gateway.onrender.com/api/keep-alive</span>
+# Frequency: Every 10 minutes via cron-job.org / UptimeRobot</div>
+
+        <!-- LIVE DIAGNOSTIC CONTROLS -->
+        <div class="section-title">⚡ SYSTEM DIAGNOSTICS & TELEMETRY PROBES</div>
+        <div class="actions-bar">
+          <button class="cmd-btn primary" onclick="runKeepAliveProbe()">$ probe --keep-alive</button>
+          <button class="cmd-btn" onclick="runWsProbe()">$ probe --websocket</button>
+          <button class="cmd-btn" onclick="runStatsProbe()">$ fetch --sysinfo</button>
+          <button class="cmd-btn" onclick="clearConsole()">$ clear</button>
         </div>
+        <div class="live-feed" id="terminal-feed">> System initialized. Ready for telemetry commands...</div>
+
+        <!-- LEADERBOARD DATA DUMP -->
+        <div class="section-title">🏆 PERSISTENT HALL OF FAME [TOP SNAPSHOT]</div>
+        <div class="code-block" style="color: #58a6ff;"># RANK  PLAYER NAME       SCORE       GENDER
+===================================================
+${leaderboardRows}</div>
+
+        <!-- ACTIVE ROOMS DUMP -->
+        <div class="section-title">⚔️ OPEN ROOMS REGISTRY</div>
+        <div class="code-block" style="color: var(--amber);">${roomsListText}</div>
       </div>
     </div>
 
     <footer>
-      GoQuiz Adventure v1.2.1 • Powered by Node.js, Express, TypeScript & Bun • Hosted on Render Cloud
+      GoQuiz Adventure Infrastructure Core • Node.js, Express, Bun & TypeScript • Render Cloud
     </footer>
   </div>
 
   <script>
-    const logBox = document.getElementById('test-console');
-    const cronConsole = document.getElementById('cron-console');
-    document.getElementById('cron-url').innerText = window.location.origin + '/api/keep-alive';
+    const feed = document.getElementById('terminal-feed');
+    const endpointSpan = document.getElementById('keep-alive-endpoint');
+    endpointSpan.innerText = window.location.origin + '/api/keep-alive';
 
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = proto + '//' + window.location.host;
-    let ws;
+    function log(msg, color) {
+      const time = new Date().toLocaleTimeString();
+      const line = '[' + time + '] ' + msg;
+      feed.innerText += '\\n' + line;
+      feed.scrollTop = feed.scrollHeight;
+    }
 
-    function initWs() {
-      logBox.innerText = 'Connecting to ' + wsUrl + '...';
-      ws = new WebSocket(wsUrl);
-      ws.onopen = () => {
-        logBox.innerText = '✓ WebSocket Connected! Sending HELLO...';
-        ws.send('HELLO|WebTester|Boy');
-      };
-      ws.onmessage = (e) => {
-        logBox.innerText += '\\n← ' + e.data;
-      };
-      ws.onerror = (e) => {
-        logBox.innerText = '✗ Connection error: ' + (e.message || 'Failed');
-      };
-      ws.onclose = () => {
-        logBox.innerText += '\\n○ Connection closed. Reconnecting in 5s...';
-        setTimeout(initWs, 5000);
-      };
+    function clearConsole() {
+      feed.innerText = '> Console buffer cleared.';
     }
-    function pingServer() {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        logBox.innerText += '\\n→ PING';
-        ws.send('PING');
-      } else {
-        alert('WebSocket is not connected yet.');
-      }
-    }
-    async function testKeepAlive() {
-      cronConsole.style.display = 'block';
-      cronConsole.innerText = 'Calling ' + window.location.origin + '/api/keep-alive ...';
+
+    async function runKeepAliveProbe() {
+      log('Executing: GET /api/keep-alive ...');
       try {
         const res = await fetch('/api/keep-alive');
-        const json = await res.json();
-        cronConsole.innerText = '✓ Response (HTTP ' + res.status + '):\\n' + JSON.stringify(json, null, 2);
+        const data = await res.json();
+        log('HTTP ' + res.status + ' OK: ' + JSON.stringify(data));
       } catch (err) {
-        cronConsole.innerText = '✗ Error: ' + err.message;
+        log('Probe failed: ' + err.message);
       }
     }
-    initWs();
+
+    async function runStatsProbe() {
+      log('Executing: GET /api/stats ...');
+      try {
+        const res = await fetch('/api/stats');
+        const data = await res.json();
+        log('SYSINFO: ' + JSON.stringify(data));
+      } catch (err) {
+        log('Sysinfo fetch failed: ' + err.message);
+      }
+    }
+
+    let wsProbe;
+    function runWsProbe() {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = proto + '//' + window.location.host;
+      log('Connecting WebSocket: ' + wsUrl + ' ...');
+      wsProbe = new WebSocket(wsUrl);
+      wsProbe.onopen = () => {
+        log('WS OPEN: Sending HELLO|ConsoleProbe|Sysadmin ...');
+        wsProbe.send('HELLO|ConsoleProbe|Sysadmin');
+        setTimeout(() => {
+          if (wsProbe.readyState === WebSocket.OPEN) {
+            log('WS TX: PING');
+            wsProbe.send('PING');
+          }
+        }, 300);
+      };
+      wsProbe.onmessage = (e) => {
+        log('WS RX: ' + e.data);
+      };
+      wsProbe.onerror = (e) => {
+        log('WS ERROR: ' + (e.message || 'Connection failure'));
+      };
+      wsProbe.onclose = () => {
+        log('WS CLOSED: Probe finished.');
+      };
+    }
   </script>
 </body>
 </html>`;
