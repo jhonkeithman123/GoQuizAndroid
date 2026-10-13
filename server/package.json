@@ -7,7 +7,7 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "dev": "bun --watch src/server.ts",
-    "build": "tsc --noEmit",
+    "build": "bun install",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
