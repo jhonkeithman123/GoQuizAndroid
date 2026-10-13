@@ -88,6 +88,8 @@ public class QuizGame extends JFrame {
     private String onlineServerHost = "127.0.0.1";
     private int onlineServerPort = 5050;
     private boolean onlineAutoConnect = true;
+    private String leaderboardMode = "ONLINE";
+    private String cloudServerUrl = "https://goquiz-global-server.onrender.com";
 
     // The computer running the game can automatically host the shared leaderboard.
     // Other devices can connect to this computer using its LAN IP address.
@@ -2773,17 +2775,17 @@ public class QuizGame extends JFrame {
     private void showOnlineLeaderboardHelpTutorial() {
         List<TutorialStep> steps = new ArrayList<>();
         steps.add(new TutorialStep(
-                "STEP 1 OF 4: LAN LEADERBOARDS",
+                "STEP 1 OF 4: DUAL MODES (ONLINE & LAN)",
                 "🌐",
-                "Cross-Device Competition",
-                "GoQuiz allows all devices connected to the same Wi-Fi router, local network, or mobile hotspot to compete and share leaderboards in real time without needing the internet.",
-                "💡 Pro-Tip: Ensure all participating devices are on the exact same Wi-Fi or hotspot."
+                "Worldwide Cloud & Offline LAN",
+                "GoQuiz features dual leaderboard connectivity:\n• [🌐 GLOBAL ONLINE]: Syncs rankings worldwide via Render & Supabase Cloud Server whenever you have internet.\n• [🏠 LOCAL LAN]: Allows offline play across devices over local Wi-Fi or mobile hotspot without internet!",
+                "💡 Pro-Tip: Use the tabs at the top of the leaderboard to switch between Global Online and Local LAN modes."
         ));
         steps.add(new TutorialStep(
                 "STEP 2 OF 4: HOSTING A SERVER",
                 "🖥️",
                 "Become The Leaderboard Hub",
-                "Any device (PC or Android phone) can act as the host server. Click [HOST LOCAL SERVER] to run QuizServer on port " + onlineServerPort + ". Your status will show [QuizServer Active] with your IP address.",
+                "In Local LAN mode, any device (PC or Android phone) can act as the host server. Click [HOST LOCAL SERVER] to run QuizServer on port " + onlineServerPort + ". Your status will show [QuizServer Active] with your IP address.",
                 "💡 Pro-Tip: If hosting from a PC, click [FIREWALL FIX] or ensure Windows Defender Firewall allows port 5050 TCP/UDP."
         ));
         steps.add(new TutorialStep(
@@ -2797,7 +2799,7 @@ public class QuizGame extends JFrame {
                 "STEP 4 OF 4: SUBMIT & DIAGNOSTICS",
                 "🏆",
                 "Publish Scores & Live Status",
-                "Click [SUBMIT MY RECORD 🏅] to upload your high score, dungeon stage, and stats to the hall of fame. Click [REFRESH 🔄] anytime to fetch latest records from challengers!",
+                "Scores are automatically synced to both Cloud and LAN upon quiz completion! Click [REFRESH ↺] anytime to fetch latest records from challengers, or [PING ⚡] to test cloud latency.",
                 "💡 Pro-Tip: Use [AUTO-CONNECT: ON] so GoQuiz automatically reconnects on startup."
         ));
         showInteractiveTutorialDialog("📖 ONLINE LEADERBOARD GUIDE", steps);
@@ -2859,7 +2861,7 @@ public class QuizGame extends JFrame {
         helpBtn.setPreferredSize(new Dimension(110, 36));
         helpBtn.setCustomBorder(new Color(231, 160, 39, 200));
         helpBtn.setCustomTextColor(GOLD_LIGHT);
-        helpBtn.setToolTipText("Interactive Guide & Tutorial on how to use LAN Leaderboards");
+        helpBtn.setToolTipText("Interactive Guide & Tutorial on how to use Online & LAN Leaderboards");
         helpBtn.addActionListener(e -> showOnlineLeaderboardHelpTutorial());
 
         JPanel leftHelpBox = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
@@ -2872,11 +2874,13 @@ public class QuizGame extends JFrame {
         rightSpacer.setPreferredSize(new Dimension(110, 36));
 
         JLabel title = new JLabel("ONLINE LEADERBOARD", SwingConstants.CENTER);
-        title.setFont(pixelFont(Font.BOLD, 32));
+        title.setFont(pixelFont(Font.BOLD, 30));
         title.setForeground(GOLD_LIGHT);
         title.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JLabel info = new JLabel("Compete across devices over LAN or Wi-Fi", SwingConstants.CENTER);
+        JLabel info = new JLabel("ONLINE".equalsIgnoreCase(leaderboardMode)
+                ? "Compete against players worldwide via Global Cloud Gateway"
+                : "Compete across devices over LAN, Wi-Fi or Hotspot", SwingConstants.CENTER);
         info.setFont(pixelFont(Font.PLAIN, 14));
         info.setForeground(MUTED);
         info.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -2900,15 +2904,70 @@ public class QuizGame extends JFrame {
         topBar.add(rightSpacer, BorderLayout.EAST);
 
         topHeader.add(topBar);
+        topHeader.add(Box.createVerticalStrut(8));
+
+        // MODE SWITCHER TABS: [ 🌐 GLOBAL ONLINE ] vs [ 🏠 LOCAL LAN ]
+        JPanel tabRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 0));
+        tabRow.setOpaque(false);
+
+        JButton tabOnline = createCompactFantasyButton("🌐 GLOBAL ONLINE", 210, 38);
+        JButton tabLan = createCompactFantasyButton("🏠 LOCAL LAN", 210, 38);
+
+        tabRow.add(tabOnline);
+        tabRow.add(tabLan);
+        topHeader.add(tabRow);
         topHeader.add(Box.createVerticalStrut(10));
 
-        // 1. TOP CONTROLS PANEL (All action buttons & inputs placed right below connectivity status)
+        // 1. TOP CONTROLS CONTAINER
         JPanel controlsPanel = new JPanel();
         controlsPanel.setOpaque(false);
         controlsPanel.setLayout(new BoxLayout(controlsPanel, BoxLayout.Y_AXIS));
         controlsPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // Network Info Banner: Shows PC's own LAN IP so users can connect from mobile or other PCs
+        // --- SUB-PANEL: CLOUD CONTROLS ---
+        JPanel cloudControls = new JPanel();
+        cloudControls.setOpaque(false);
+        cloudControls.setLayout(new BoxLayout(cloudControls, BoxLayout.Y_AXIS));
+        cloudControls.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel cloudBanner = new JLabel("🌐 Cloud Gateway Mode • Synced with Global Database (Render & Supabase)", SwingConstants.CENTER);
+        cloudBanner.setFont(pixelFont(Font.BOLD, 13));
+        cloudBanner.setForeground(new Color(110, 210, 255));
+        cloudBanner.setAlignmentX(Component.CENTER_ALIGNMENT);
+        cloudControls.add(cloudBanner);
+        cloudControls.add(Box.createVerticalStrut(8));
+
+        JPanel cloudInputRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        cloudInputRow.setOpaque(false);
+
+        JLabel cloudUrlL = new JLabel("Cloud URL:");
+        cloudUrlL.setFont(pixelFont(Font.BOLD, 13));
+        cloudUrlL.setForeground(GOLD_LIGHT);
+
+        JTextField cloudUrlInput = new JTextField(cloudServerUrl, 26);
+        styleFantasyInput(cloudUrlInput);
+        cloudUrlInput.setPreferredSize(new Dimension(320, 36));
+
+        JButton refreshCloudBtn = createCompactFantasyButton("REFRESH CLOUD ↺", 180, 36);
+        refreshCloudBtn.setBackground(new Color(116, 67, 18));
+        refreshCloudBtn.setForeground(GOLD_LIGHT);
+
+        JButton pingBtn = createCompactFantasyButton("PING ⚡", 100, 36);
+        pingBtn.setBackground(new Color(24, 60, 95));
+        pingBtn.setForeground(GOLD_LIGHT);
+
+        cloudInputRow.add(cloudUrlL);
+        cloudInputRow.add(cloudUrlInput);
+        cloudInputRow.add(refreshCloudBtn);
+        cloudInputRow.add(pingBtn);
+        cloudControls.add(cloudInputRow);
+
+        // --- SUB-PANEL: LAN CONTROLS ---
+        JPanel lanControls = new JPanel();
+        lanControls.setOpaque(false);
+        lanControls.setLayout(new BoxLayout(lanControls, BoxLayout.Y_AXIS));
+        lanControls.setAlignmentX(Component.CENTER_ALIGNMENT);
+
         List<String> candidateIps = getAllCandidateIps();
         String myLocalIp = !candidateIps.isEmpty() ? candidateIps.get(0) : getLocalIpAddress();
         boolean serverRunning = (embeddedServer != null && embeddedServer.isRunning());
@@ -2917,12 +2976,11 @@ public class QuizGame extends JFrame {
         ipBanner.setFont(pixelFont(Font.BOLD, 13));
         ipBanner.setForeground(new Color(90, 220, 120));
         ipBanner.setAlignmentX(Component.CENTER_ALIGNMENT);
-        controlsPanel.add(ipBanner);
-        controlsPanel.add(Box.createVerticalStrut(8));
+        lanControls.add(ipBanner);
+        lanControls.add(Box.createVerticalStrut(8));
 
-        // Action Buttons Row: Host Server, Auto-Discover, Auto-Connect, Connect & Refresh
-        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
-        btnRow.setOpaque(false);
+        JPanel lanBtnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        lanBtnRow.setOpaque(false);
 
         JButton hostBtn = createCompactFantasyButton(serverRunning ? "STOP LOCAL SERVER" : "HOST LOCAL SERVER", 200, 42);
         if (serverRunning) hostBtn.setBackground(new Color(110, 35, 35));
@@ -2940,36 +2998,35 @@ public class QuizGame extends JFrame {
             autoConnectBtn.setForeground(MUTED);
         }
 
-        JButton connect = createCompactFantasyButton("CONNECT & REFRESH ↺", 210, 42);
-        connect.setBackground(new Color(116, 67, 18));
-        connect.setForeground(GOLD_LIGHT);
+        JButton connectLanBtn = createCompactFantasyButton("CONNECT & REFRESH ↺", 210, 42);
+        connectLanBtn.setBackground(new Color(116, 67, 18));
+        connectLanBtn.setForeground(GOLD_LIGHT);
 
-        btnRow.add(hostBtn);
-        btnRow.add(autoDiscoverBtn);
-        btnRow.add(autoConnectBtn);
-        btnRow.add(connect);
-        controlsPanel.add(btnRow);
-        controlsPanel.add(Box.createVerticalStrut(8));
+        lanBtnRow.add(hostBtn);
+        lanBtnRow.add(autoDiscoverBtn);
+        lanBtnRow.add(autoConnectBtn);
+        lanBtnRow.add(connectLanBtn);
+        lanControls.add(lanBtnRow);
+        lanControls.add(Box.createVerticalStrut(8));
 
-        // Inputs Row: Server IP, Port, and Firewall Fix button
-        JPanel inputRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
-        inputRow.setOpaque(false);
+        JPanel lanInputRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        lanInputRow.setOpaque(false);
 
         JLabel hostL = new JLabel("Server IP:");
         hostL.setFont(pixelFont(Font.BOLD, 13));
         hostL.setForeground(GOLD_LIGHT);
 
-        JTextField host = new JTextField(onlineServerHost, 15);
-        styleFantasyInput(host);
-        host.setPreferredSize(new Dimension(200, 36));
+        JTextField hostInput = new JTextField(onlineServerHost, 15);
+        styleFantasyInput(hostInput);
+        hostInput.setPreferredSize(new Dimension(200, 36));
 
         JLabel portL = new JLabel("Port:");
         portL.setFont(pixelFont(Font.BOLD, 13));
         portL.setForeground(GOLD_LIGHT);
 
-        JTextField port = new JTextField(String.valueOf(onlineServerPort), 5);
-        styleFantasyInput(port);
-        port.setPreferredSize(new Dimension(90, 36));
+        JTextField portInput = new JTextField(String.valueOf(onlineServerPort), 5);
+        styleFantasyInput(portInput);
+        portInput.setPreferredSize(new Dimension(90, 36));
 
         JButton firewallBtn = createCompactFantasyButton("🛡 FIREWALL FIX", 160, 36);
         firewallBtn.setBackground(new Color(60, 40, 70));
@@ -2977,17 +3034,19 @@ public class QuizGame extends JFrame {
         firewallBtn.setToolTipText("Allow GoQuiz ports 5050 and 5052 through Windows Defender Firewall");
         firewallBtn.addActionListener(e -> fixWindowsFirewall());
 
-        inputRow.add(hostL);
-        inputRow.add(host);
-        inputRow.add(portL);
-        inputRow.add(port);
-        inputRow.add(firewallBtn);
-        controlsPanel.add(inputRow);
+        lanInputRow.add(hostL);
+        lanInputRow.add(hostInput);
+        lanInputRow.add(portL);
+        lanInputRow.add(portInput);
+        lanInputRow.add(firewallBtn);
+        lanControls.add(lanInputRow);
 
+        controlsPanel.add(cloudControls);
+        controlsPanel.add(lanControls);
         topHeader.add(controlsPanel);
         panel.add(topHeader, BorderLayout.NORTH);
 
-        // 2. EXPANDED LEADERBOARD CARD (Center area)
+        // 2. EXPANDED LEADERBOARD CARD
         JPanel center = new JPanel(new GridBagLayout());
         center.setOpaque(false);
 
@@ -3020,7 +3079,7 @@ public class QuizGame extends JFrame {
         center.add(boardCard);
         panel.add(center, BorderLayout.CENTER);
 
-        // 3. BOTTOM: Only Back to Home
+        // 3. BOTTOM: Back to Home
         JPanel bottom = new JPanel();
         bottom.setOpaque(false);
         bottom.setBorder(BorderFactory.createEmptyBorder(10, 0, 18, 0));
@@ -3028,6 +3087,89 @@ public class QuizGame extends JFrame {
         back.addActionListener(e -> showHome());
         bottom.add(back);
         panel.add(bottom, BorderLayout.SOUTH);
+
+        // View Mode update handler
+        Runnable updateTabsAndMode = () -> {
+            boolean isOnline = "ONLINE".equalsIgnoreCase(leaderboardMode);
+            if (isOnline) {
+                tabOnline.setBackground(new Color(116, 67, 18));
+                tabOnline.setForeground(GOLD_LIGHT);
+                tabLan.setBackground(new Color(24, 32, 42));
+                tabLan.setForeground(MUTED);
+                info.setText("Compete against players worldwide via Global Cloud Gateway");
+                cloudControls.setVisible(true);
+                lanControls.setVisible(false);
+            } else {
+                tabLan.setBackground(new Color(116, 67, 18));
+                tabLan.setForeground(GOLD_LIGHT);
+                tabOnline.setBackground(new Color(24, 32, 42));
+                tabOnline.setForeground(MUTED);
+                info.setText("Compete across devices over LAN, Wi-Fi or Hotspot");
+                cloudControls.setVisible(false);
+                lanControls.setVisible(true);
+            }
+            controlsPanel.revalidate();
+            controlsPanel.repaint();
+        };
+
+        tabOnline.addActionListener(e -> {
+            leaderboardMode = "ONLINE";
+            saveSettings();
+            updateTabsAndMode.run();
+            executeCloudLeaderboardFetch(cloudUrlInput.getText().trim(), board, statusLabel, false);
+        });
+
+        tabLan.addActionListener(e -> {
+            leaderboardMode = "LAN";
+            saveSettings();
+            updateTabsAndMode.run();
+            executeOnlineLeaderboardFetch(hostInput.getText().trim(), onlineServerPort, board, statusLabel, false);
+        });
+
+        refreshCloudBtn.addActionListener(e -> {
+            executeCloudLeaderboardFetch(cloudUrlInput.getText().trim(), board, statusLabel, true);
+        });
+
+        pingBtn.addActionListener(e -> {
+            pingBtn.setEnabled(false);
+            pingBtn.setText("PINGING...");
+            new Thread(() -> {
+                String target = cloudUrlInput.getText().trim();
+                if (!target.startsWith("http://") && !target.startsWith("https://")) target = "https://" + target;
+                long start = System.currentTimeMillis();
+                try {
+                    String ep = target.endsWith("/") ? target + "api/keep-alive" : target + "/api/keep-alive";
+                    URL u = new URL(ep);
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(4000);
+                    conn.setReadTimeout(4000);
+                    int resp = conn.getResponseCode();
+                    long latency = System.currentTimeMillis() - start;
+                    SwingUtilities.invokeLater(() -> {
+                        pingBtn.setEnabled(true);
+                        pingBtn.setText("PING ⚡");
+                        if (resp >= 200 && resp < 300) {
+                            statusLabel.setText("★ Cloud Gateway Reachable (" + latency + "ms)");
+                            statusLabel.setForeground(new Color(90, 220, 120));
+                            JOptionPane.showMessageDialog(this, "Cloud Gateway is ONLINE!\nLatency: " + latency + " ms\nEndpoint: " + ep, "Cloud Ping Result", JOptionPane.INFORMATION_MESSAGE);
+                        } else {
+                            statusLabel.setText("○ Cloud HTTP " + resp);
+                            statusLabel.setForeground(new Color(255, 110, 110));
+                            JOptionPane.showMessageDialog(this, "Cloud responded with status: " + resp, "Cloud Ping", JOptionPane.WARNING_MESSAGE);
+                        }
+                    });
+                } catch (Exception ex) {
+                    SwingUtilities.invokeLater(() -> {
+                        pingBtn.setEnabled(true);
+                        pingBtn.setText("PING ⚡");
+                        statusLabel.setText("○ Cloud Unreachable (" + ex.getMessage() + ")");
+                        statusLabel.setForeground(new Color(255, 110, 110));
+                        JOptionPane.showMessageDialog(this, "Ping failed: " + ex.getMessage(), "Cloud Ping", JOptionPane.ERROR_MESSAGE);
+                    });
+                }
+            }, "QuizDesktopCloudPing").start();
+        });
 
         hostBtn.addActionListener(e -> {
             if (embeddedServer != null && embeddedServer.isRunning()) {
@@ -3059,14 +3201,14 @@ public class QuizGame extends JFrame {
 
             new Thread(() -> {
                 int prt = onlineServerPort;
-                try { prt = Integer.parseInt(port.getText().trim()); } catch (Exception ignored) {}
+                try { prt = Integer.parseInt(portInput.getText().trim()); } catch (Exception ignored) {}
                 final int finalPort = prt;
                 String discovered = discoverServerIp(finalPort);
                 SwingUtilities.invokeLater(() -> {
                     autoDiscoverBtn.setEnabled(true);
                     autoDiscoverBtn.setText("AUTO-DISCOVER 🔍");
                     if (discovered != null) {
-                        host.setText(discovered);
+                        hostInput.setText(discovered);
                         onlineServerHost = discovered;
                         statusLabel.setText("Found server at " + discovered + "!");
                         statusLabel.setForeground(new Color(90, 220, 120));
@@ -3094,21 +3236,139 @@ public class QuizGame extends JFrame {
             }
         });
 
-        connect.addActionListener(e -> {
+        connectLanBtn.addActionListener(e -> {
             try {
-                String h = host.getText().trim();
-                int prt = Integer.parseInt(port.getText().trim());
+                String h = hostInput.getText().trim();
+                int prt = Integer.parseInt(portInput.getText().trim());
                 executeOnlineLeaderboardFetch(h, prt, board, statusLabel, true);
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this, "Invalid host or port: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
         });
 
-        if (onlineAutoConnect) {
+        // Initialize view mode
+        updateTabsAndMode.run();
+
+        if ("ONLINE".equalsIgnoreCase(leaderboardMode)) {
+            executeCloudLeaderboardFetch(cloudServerUrl, board, statusLabel, false);
+        } else if (onlineAutoConnect) {
             executeOnlineLeaderboardFetch(onlineServerHost, onlineServerPort, board, statusLabel, false);
         }
 
         changeScreen(panel);
+    }
+
+    private void executeCloudLeaderboardFetch(String urlStr, JTextArea board, JLabel statusLabel, boolean showErrors) {
+        if (urlStr == null || urlStr.trim().isEmpty()) {
+            if (showErrors) JOptionPane.showMessageDialog(this, "Cloud Server URL is required.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        String finalUrl = urlStr.trim();
+        if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+            finalUrl = "https://" + finalUrl;
+        }
+        cloudServerUrl = finalUrl;
+        saveSettings();
+
+        statusLabel.setText("Connecting to Cloud Gateway (" + finalUrl + ")...");
+        statusLabel.setForeground(GOLD_LIGHT);
+        board.setText("Loading global rankings from cloud server...");
+
+        final int uploadScore = getStudentBestScore();
+        if (studentName != null && !studentName.trim().isEmpty()) {
+            sendCloudScore(studentName, uploadScore, studentGender);
+        }
+
+        final String baseUrl = finalUrl;
+        new Thread(() -> {
+            try {
+                String ep = baseUrl.endsWith("/") ? baseUrl + "api/leaderboard?format=raw" : baseUrl + "/api/leaderboard?format=raw";
+                URL u = new URL(ep);
+                HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(6500);
+                conn.setReadTimeout(6500);
+                conn.setRequestProperty("Accept", "text/plain");
+
+                int code = conn.getResponseCode();
+                if (code >= 200 && code < 300) {
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            sb.append(line);
+                        }
+                        final String rawResp = sb.toString();
+                        SwingUtilities.invokeLater(() -> {
+                            String[] p = rawResp.split("\\|", -1);
+                            StringBuilder b = new StringBuilder("RANK   ADVENTURER                      GLOBAL SCORE\n\n");
+                            int rank = 1;
+                            for (int i = 1; i + 1 < p.length; i += 2) {
+                                b.append(String.format("%-6d %-30s %s pts%n", rank++, p[i], p[i + 1]));
+                            }
+                            if (rank == 1) b.append("No global scores recorded yet. Complete a quiz to rank!");
+                            board.setText(b.toString());
+                            statusLabel.setText("★ [GLOBAL ONLINE: CONNECTED]  •  Cloud Gateway Synced (" + baseUrl + ")");
+                            statusLabel.setForeground(new Color(90, 220, 120));
+                        });
+                    }
+                } else {
+                    throw new IOException("HTTP error code: " + code);
+                }
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    statusLabel.setText("○ CLOUD OFFLINE (" + baseUrl + ")");
+                    statusLabel.setForeground(new Color(255, 110, 110));
+                    board.setText("Could not reach Global Cloud Gateway:\n" + baseUrl + "\n\nDetails: " + ex.getMessage() +
+                            "\n\nTips:\n• Check internet connection.\n• If deploying on Render, free instance may take 30-40s to spin up.\n• Switch to '🏠 LOCAL LAN' tab for offline/classroom play.");
+                    if (showErrors) {
+                        JOptionPane.showMessageDialog(this,
+                                "Could not connect to Cloud Gateway at " + baseUrl + ":\n" + ex.getMessage(),
+                                "Cloud Connection Notice", JOptionPane.INFORMATION_MESSAGE);
+                    }
+                });
+            }
+        }, "QuizDesktopCloudFetch").start();
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\b", "\\b")
+                .replace("\f", "\\f")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
+
+    private void sendCloudScore(String name, int scoreVal, String genderVal) {
+        if (name == null || name.trim().isEmpty()) return;
+        new Thread(() -> {
+            try {
+                String baseUrl = cloudServerUrl != null ? cloudServerUrl.trim() : "https://goquiz-global-server.onrender.com";
+                if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+                    baseUrl = "https://" + baseUrl;
+                }
+                String ep = baseUrl.endsWith("/") ? baseUrl + "api/score" : baseUrl + "/api/score";
+                URL u = new URL(ep);
+                HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(6000);
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                String payload = String.format("{\"name\":\"%s\",\"score\":%d,\"gender\":\"%s\"}",
+                        escapeJson(name.trim()),
+                        scoreVal,
+                        escapeJson(genderVal != null && !genderVal.trim().isEmpty() ? genderVal : "Adventurer"));
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+                conn.getResponseCode();
+            } catch (Exception ignored) {}
+        }, "QuizDesktopCloudScoreSender").start();
     }
 
     private void executeOnlineLeaderboardFetch(String h, int prt, JTextArea board, JLabel statusLabel, boolean showErrors) {
@@ -3182,6 +3442,10 @@ public class QuizGame extends JFrame {
     private void sendOnlineScore() {
         if (studentName == null || studentName.trim().isEmpty()) return;
         final int uploadScore = getStudentBestScore();
+        // 1. Submit score to Global Cloud Server (Render & Supabase)
+        sendCloudScore(studentName, uploadScore, studentGender);
+
+        // 2. Submit score to Local LAN QuizServer
         if (onlineClient != null) {
             onlineClient.send("SCORE|" + cleanNet(studentName) + "|" + uploadScore);
         } else {
@@ -8072,6 +8336,8 @@ public class QuizGame extends JFrame {
             soundEnabled = Boolean.parseBoolean(p.getProperty("soundEnabled", "true"));
             masterVolumePercent = Math.max(0, Math.min(100, Integer.parseInt(p.getProperty("masterVolume", "80"))));
             difficulty = p.getProperty("difficulty", "Medium");
+            leaderboardMode = p.getProperty("leaderboardMode", "ONLINE");
+            cloudServerUrl = p.getProperty("cloudServerUrl", "https://goquiz-global-server.onrender.com");
         } catch (Exception ignored) {}
     }
 
@@ -8080,6 +8346,8 @@ public class QuizGame extends JFrame {
         p.setProperty("soundEnabled", String.valueOf(soundEnabled));
         p.setProperty("masterVolume", String.valueOf(masterVolumePercent));
         p.setProperty("difficulty", difficulty);
+        p.setProperty("leaderboardMode", leaderboardMode);
+        p.setProperty("cloudServerUrl", cloudServerUrl);
         try (FileOutputStream out = new FileOutputStream(SETTINGS_FILE)) {
             p.store(out, "Quiz Adventure Settings");
         } catch (Exception ignored) {}

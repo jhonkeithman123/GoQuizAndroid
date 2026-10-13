@@ -4825,32 +4825,32 @@ public class MainActivity extends Activity {
     void showOnlineLeaderboardHelpTutorial() {
         List<TutorialStep> steps = new ArrayList<>();
         steps.add(new TutorialStep(
-                "STEP 1 OF 4: LAN LEADERBOARDS",
+                "STEP 1 OF 4: DUAL MODES (ONLINE & LAN)",
                 "🌐",
-                "Cross-Device Competition",
-                "GoQuiz allows all devices connected to the same Wi-Fi router, local network, or mobile hotspot to compete and share leaderboards in real time without needing the internet.",
-                "💡 Pro-Tip: Ensure all participating devices are on the exact same Wi-Fi or hotspot."
+                "Worldwide Cloud & Offline LAN",
+                "GoQuiz features dual leaderboard connectivity:\n• [🌐 GLOBAL ONLINE]: Syncs rankings worldwide via Render & Supabase Cloud Server whenever you have internet.\n• [🏠 LOCAL LAN]: Allows offline play across devices over local Wi-Fi or mobile hotspot without internet!",
+                "💡 Pro-Tip: Tap the tabs at the top of the leaderboard to switch between Global Online and Local LAN modes."
         ));
         steps.add(new TutorialStep(
                 "STEP 2 OF 4: HOSTING A SERVER",
                 "🖥️",
                 "Become The Leaderboard Hub",
-                "Any device (Android phone or PC) can act as the host server. Tap [START LOCAL SERVER] to run an embedded server on port 5050. Your status pill will switch to [HOST: ON] with your IP address.",
+                "In Local LAN mode, any device (Android phone or PC) can act as the host server. Tap [HOST LOCAL SERVER] to run an embedded server on port 5050. Your status pill will switch to [HOST: ON] with your IP address.",
                 "💡 Pro-Tip: If hosting from a PC, verify Windows Defender Firewall permits port 5050 TCP/UDP."
         ));
         steps.add(new TutorialStep(
                 "STEP 3 OF 4: AUTO-DISCOVERY",
                 "📡",
                 "Find Active Games Instantly",
-                "Tap [AUTO-DISCOVER] to send UDP beacons across the local network. Active servers will be detected automatically! You can also tap [ENTER IP] to connect to a specific host IP address.",
-                "💡 Pro-Tip: If auto-discovery takes time, look at the host device's IP banner and use Enter IP."
+                "Tap [DISCOVER 🔍] to send UDP beacons across the local network. Active servers will be detected automatically! You can also enter the host IP directly into the Server IP field.",
+                "💡 Pro-Tip: If auto-discovery takes time, look at the host device's IP banner and use manual IP entry."
         ));
         steps.add(new TutorialStep(
                 "STEP 4 OF 4: SUBMIT & DIAGNOSTICS",
                 "🏆",
                 "Publish Scores & Live Status",
-                "Tap [SUBMIT MY RECORD] to upload your score, level, and best times to the server. Tap the [HOST: ON/OFF] or [LAN: STATUS] pills at any time for live network latency diagnostics!",
-                "💡 Pro-Tip: Tap [REFRESH] to fetch the latest high scores whenever new challengers post results."
+                "Scores are automatically synced to both Cloud and LAN upon quiz completion! Tap [REFRESH ↺] anytime to fetch latest records from challengers, or test cloud ping latency.",
+                "💡 Pro-Tip: Tap [AUTO: ON] so GoQuiz automatically reconnects on startup."
         ));
         showInteractiveTutorialDialog("📖 ONLINE LEADERBOARD GUIDE", steps);
     }
@@ -4902,7 +4902,12 @@ public class MainActivity extends Activity {
         TextView t = createStyledTextView("ONLINE LEADERBOARD", 24);
         t.setTextColor(GOLD_LIGHT);
         addViewToVerticalLayout(p, t);
-        addViewToVerticalLayout(p, createStyledTextView("Compete across devices over LAN or Wi-Fi", 12));
+
+        final String[] curMode = new String[]{prefs.getString("leaderboardMode", "ONLINE")};
+        TextView subTitle = createStyledTextView("ONLINE".equalsIgnoreCase(curMode[0])
+                ? "Compete against players worldwide via Global Cloud Gateway"
+                : "Compete across devices over LAN or Wi-Fi", 12);
+        addViewToVerticalLayout(p, subTitle);
         addVerticalSpacing(p, 4);
 
         // Interactive Live Connection Status & Diagnostics Badge
@@ -4912,24 +4917,98 @@ public class MainActivity extends Activity {
         addVerticalSpacing(p, 6);
         TextView statusView = connectionBadge.detailText;
 
-        // 1. TOP CONTROLS CONTAINER (All action buttons & inputs placed right below connectivity text)
-        LinearLayout controlsContainer = new LinearLayout(this);
-        controlsContainer.setOrientation(LinearLayout.VERTICAL);
-        controlsContainer.setGravity(Gravity.CENTER_HORIZONTAL);
+        // MODE SWITCHER TABS: [ 🌐 GLOBAL ONLINE ] vs [ 🏠 LOCAL LAN ]
+        LinearLayout tabRow = new LinearLayout(this);
+        tabRow.setOrientation(LinearLayout.HORIZONTAL);
+        tabRow.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams tabRowLp = new LinearLayout.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tabRowLp.gravity = Gravity.CENTER_HORIZONTAL;
+        tabRow.setLayoutParams(tabRowLp);
+
+        Button tabOnline = createStyledButton("🌐 GLOBAL ONLINE");
+        tabOnline.setTextSize(12);
+        tabOnline.setPadding((int) (8 * density), (int) (8 * density), (int) (8 * density), (int) (8 * density));
+
+        Button tabLan = createStyledButton("🏠 LOCAL LAN");
+        tabLan.setTextSize(12);
+        tabLan.setPadding((int) (8 * density), (int) (8 * density), (int) (8 * density), (int) (8 * density));
+
+        LinearLayout.LayoutParams tLp1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tLp1.setMargins(0, 0, (int) (4 * density), 0);
+        LinearLayout.LayoutParams tLp2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tLp2.setMargins((int) (4 * density), 0, 0, 0);
+
+        tabRow.addView(tabOnline, tLp1);
+        tabRow.addView(tabLan, tLp2);
+        p.addView(tabRow);
+        addVerticalSpacing(p, 6);
+
+        // 1. TOP CONTROLS CONTAINER
+        // --- SUB-PANEL: CLOUD CONTROLS ---
+        LinearLayout cloudControlsContainer = new LinearLayout(this);
+        cloudControlsContainer.setOrientation(LinearLayout.VERTICAL);
+        cloudControlsContainer.setGravity(Gravity.CENTER_HORIZONTAL);
+        LinearLayout.LayoutParams cloudLp = new LinearLayout.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cloudLp.gravity = Gravity.CENTER_HORIZONTAL;
+        cloudControlsContainer.setLayoutParams(cloudLp);
+
+        TextView cloudBanner = createStyledTextView("🌐 Cloud Gateway Mode • Synced with Supabase (Render)", 12);
+        cloudBanner.setTextColor(Color.rgb(110, 210, 255));
+        cloudBanner.setGravity(Gravity.CENTER_HORIZONTAL);
+        cloudControlsContainer.addView(cloudBanner);
+        addVerticalSpacing(cloudControlsContainer, 4);
+
+        LinearLayout cloudInputRow = new LinearLayout(this);
+        cloudInputRow.setOrientation(LinearLayout.HORIZONTAL);
+        cloudInputRow.setGravity(Gravity.CENTER);
+        cloudInputRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        EditText cloudUrl = createStyledEditText("Cloud URL (e.g. https://goquiz...)");
+        cloudUrl.setText(prefs.getString("cloudServerUrl", "https://goquiz-global-server.onrender.com"));
+        cloudUrl.setTextSize(13);
+        cloudUrl.setPadding((int) (12 * density), (int) (8 * density), (int) (12 * density), (int) (8 * density));
+
+        Button refreshCloud = createStyledButton("REFRESH ↺");
+        refreshCloud.setTextSize(11);
+        refreshCloud.setPadding((int) (6 * density), (int) (8 * density), (int) (6 * density), (int) (8 * density));
+        setButtonFantasyStyle(refreshCloud, Color.rgb(116, 67, 18), GOLD_LIGHT);
+
+        Button pingCloud = createStyledButton("PING ⚡");
+        pingCloud.setTextSize(11);
+        pingCloud.setPadding((int) (6 * density), (int) (8 * density), (int) (6 * density), (int) (8 * density));
+        setButtonFantasyStyle(pingCloud, Color.rgb(20, 65, 95), Color.rgb(120, 200, 255));
+
+        LinearLayout.LayoutParams cUrlLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2.2f);
+        cUrlLp.setMargins(0, 0, (int) (3 * density), 0);
+        LinearLayout.LayoutParams cRefLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.1f);
+        cRefLp.setMargins((int) (3 * density), 0, (int) (3 * density), 0);
+        LinearLayout.LayoutParams cPingLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.9f);
+        cPingLp.setMargins((int) (3 * density), 0, 0, 0);
+
+        cloudInputRow.addView(cloudUrl, cUrlLp);
+        cloudInputRow.addView(refreshCloud, cRefLp);
+        cloudInputRow.addView(pingCloud, cPingLp);
+        cloudControlsContainer.addView(cloudInputRow);
+        p.addView(cloudControlsContainer);
+
+        // --- SUB-PANEL: LAN CONTROLS ---
+        LinearLayout lanControlsContainer = new LinearLayout(this);
+        lanControlsContainer.setOrientation(LinearLayout.VERTICAL);
+        lanControlsContainer.setGravity(Gravity.CENTER_HORIZONTAL);
         LinearLayout.LayoutParams containerLp = new LinearLayout.LayoutParams(
                 panelWidth,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
         containerLp.gravity = Gravity.CENTER_HORIZONTAL;
-        controlsContainer.setLayoutParams(containerLp);
+        lanControlsContainer.setLayoutParams(containerLp);
 
         // Local IP and Host Status Display
         String myIp = getLocalIpAddress();
         TextView ipBanner = createStyledTextView("📱 Your Device IP: " + myIp + (embeddedServer != null ? "  ★ [SERVER RUNNING on 5050]" : ""), 12);
         ipBanner.setTextColor(embeddedServer != null ? GOLD_LIGHT : MUTED);
         ipBanner.setGravity(Gravity.CENTER_HORIZONTAL);
-        controlsContainer.addView(ipBanner);
-        addVerticalSpacing(controlsContainer, 4);
+        lanControlsContainer.addView(ipBanner);
+        addVerticalSpacing(lanControlsContainer, 4);
 
         // Button Row: Host Server, Discover, Connect & Refresh, Auto-Connect
         LinearLayout btnRow = new LinearLayout(this);
@@ -4981,9 +5060,9 @@ public class MainActivity extends Activity {
         btnRow.addView(discoverBtn, bLp2);
         btnRow.addView(refresh, bLp3);
         btnRow.addView(autoConnectBtn, bLp4);
-        controlsContainer.addView(btnRow);
+        lanControlsContainer.addView(btnRow);
 
-        addVerticalSpacing(controlsContainer, 4);
+        addVerticalSpacing(lanControlsContainer, 4);
 
         // Connection Settings Row: Server IP and Port
         LinearLayout inputRow = new LinearLayout(this);
@@ -5012,9 +5091,9 @@ public class MainActivity extends Activity {
 
         inputRow.addView(host, hostLp);
         inputRow.addView(port, portLp);
-        controlsContainer.addView(inputRow);
+        lanControlsContainer.addView(inputRow);
 
-        p.addView(controlsContainer);
+        p.addView(lanControlsContainer);
 
         addVerticalSpacing(p, 8);
 
@@ -5076,10 +5155,87 @@ public class MainActivity extends Activity {
         addCenteredMenuButton(p, back);
         back.setOnClickListener(v -> transitionToScreenWithFade(this::showHomeScreen));
 
+        Runnable updateModeViews = () -> {
+            boolean isOnline = "ONLINE".equalsIgnoreCase(curMode[0]);
+            if (isOnline) {
+                setButtonFantasyStyle(tabOnline, Color.rgb(116, 67, 18), GOLD_LIGHT);
+                setButtonFantasyStyle(tabLan, Color.rgb(35, 45, 55), MUTED);
+                subTitle.setText("Compete against players worldwide via Global Cloud Gateway");
+                cloudControlsContainer.setVisibility(View.VISIBLE);
+                lanControlsContainer.setVisibility(View.GONE);
+            } else {
+                setButtonFantasyStyle(tabLan, Color.rgb(116, 67, 18), GOLD_LIGHT);
+                setButtonFantasyStyle(tabOnline, Color.rgb(35, 45, 55), MUTED);
+                subTitle.setText("Compete across devices over LAN or Wi-Fi");
+                cloudControlsContainer.setVisibility(View.GONE);
+                lanControlsContainer.setVisibility(View.VISIBLE);
+            }
+        };
+
+        tabOnline.setOnClickListener(v -> {
+            curMode[0] = "ONLINE";
+            prefs.edit().putString("leaderboardMode", "ONLINE").apply();
+            updateModeViews.run();
+            executeCloudLeaderboardFetch(cloudUrl.getText().toString().trim(), board, statusView, false);
+        });
+
+        tabLan.setOnClickListener(v -> {
+            curMode[0] = "LAN";
+            prefs.edit().putString("leaderboardMode", "LAN").apply();
+            updateModeViews.run();
+            executeLeaderboardFetch(host.getText().toString().trim(), port.getText().toString().trim(), board, statusView, false);
+        });
+
+        refreshCloud.setOnClickListener(v -> {
+            executeCloudLeaderboardFetch(cloudUrl.getText().toString().trim(), board, statusView, true);
+        });
+
+        pingCloud.setOnClickListener(v -> {
+            pingCloud.setEnabled(false);
+            pingCloud.setText("PING...");
+            backgroundExecutor.submit(() -> {
+                String target = cloudUrl.getText().toString().trim();
+                if (!target.startsWith("http://") && !target.startsWith("https://")) target = "https://" + target;
+                long start = System.currentTimeMillis();
+                try {
+                    String ep = target.endsWith("/") ? target + "api/keep-alive" : target + "/api/keep-alive";
+                    URL u = new URL(ep);
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(4000);
+                    conn.setReadTimeout(4000);
+                    int resp = conn.getResponseCode();
+                    long latency = System.currentTimeMillis() - start;
+                    runOnUiThread(() -> {
+                        pingCloud.setEnabled(true);
+                        pingCloud.setText("PING ⚡");
+                        if (resp >= 200 && resp < 300) {
+                            Toast.makeText(this, "Cloud Gateway Reachable (" + latency + "ms)", Toast.LENGTH_SHORT).show();
+                            if (activeLeaderboardBadge != null) {
+                                activeLeaderboardBadge.update("★ Cloud Ping: " + latency + "ms", Color.rgb(90, 220, 120));
+                            }
+                        } else {
+                            Toast.makeText(this, "Cloud responded: HTTP " + resp, Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                } catch (Exception ex) {
+                    runOnUiThread(() -> {
+                        pingCloud.setEnabled(true);
+                        pingCloud.setText("PING ⚡");
+                        Toast.makeText(this, "Cloud Ping Error: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
+                    });
+                }
+            });
+        });
+
         connectionBadge.onAction = () -> {
-            String h = host.getText().toString().trim();
-            String prt = port.getText().toString().trim();
-            executeLeaderboardFetch(h, prt, board, statusView, true);
+            if ("ONLINE".equalsIgnoreCase(curMode[0])) {
+                executeCloudLeaderboardFetch(cloudUrl.getText().toString().trim(), board, statusView, true);
+            } else {
+                String h = host.getText().toString().trim();
+                String prt = port.getText().toString().trim();
+                executeLeaderboardFetch(h, prt, board, statusView, true);
+            }
         };
 
         hostBtn.setOnClickListener(v -> {
@@ -5157,12 +5313,123 @@ public class MainActivity extends Activity {
             executeLeaderboardFetch(h, prt, board, statusView, true);
         });
 
-        // Autoconnect on screen open if enabled
-        if (autoConnect[0]) {
+        // Initialize view mode
+        updateModeViews.run();
+
+        if ("ONLINE".equalsIgnoreCase(curMode[0])) {
+            executeCloudLeaderboardFetch(cloudUrl.getText().toString().trim(), board, statusView, false);
+        } else if (autoConnect[0]) {
             String initialHost = host.getText().toString().trim();
             String initialPort = port.getText().toString().trim();
             executeLeaderboardFetch(initialHost, initialPort, board, statusView, false);
         }
+    }
+
+    void executeCloudLeaderboardFetch(String urlStr, TextView board, TextView statusView, boolean showUserAlerts) {
+        if (urlStr == null || urlStr.trim().isEmpty()) {
+            if (showUserAlerts) showAlertDialog("Cloud Server URL is required.");
+            return;
+        }
+
+        String finalUrl = urlStr.trim();
+        if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+            finalUrl = "https://" + finalUrl;
+        }
+        prefs.edit().putString("cloudServerUrl", finalUrl).apply();
+
+        if (activeLeaderboardBadge != null) {
+            activeLeaderboardBadge.update("Connecting to Cloud Gateway (" + finalUrl + ")...", GOLD_LIGHT);
+        } else if (statusView != null) {
+            statusView.setText("Connecting to Cloud Gateway (" + finalUrl + ")...");
+            statusView.setTextColor(GOLD_LIGHT);
+        }
+        board.setText("Loading global rankings from cloud server...");
+
+        final int uploadScore = getStudentBestScore();
+        if (studentName != null && !studentName.trim().isEmpty()) {
+            sendCloudScore(studentName, uploadScore, gender);
+        }
+
+        final String baseUrl = finalUrl;
+        backgroundExecutor.submit(() -> {
+            try {
+                String ep = baseUrl.endsWith("/") ? baseUrl + "api/leaderboard?format=raw" : baseUrl + "/api/leaderboard?format=raw";
+                URL u = new URL(ep);
+                HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(6500);
+                conn.setReadTimeout(6500);
+                conn.setRequestProperty("Accept", "text/plain");
+
+                int code = conn.getResponseCode();
+                if (code >= 200 && code < 300) {
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            sb.append(line);
+                        }
+                        final String rawResp = sb.toString();
+                        runOnUiThread(() -> {
+                            isLeaderboardConnected = true;
+                            if (activeLeaderboardBadge != null) {
+                                activeLeaderboardBadge.update("★ Cloud Gateway Synced • " + baseUrl, Color.rgb(90, 220, 120));
+                            } else if (statusView != null) {
+                                statusView.setText("★ Cloud Gateway Synced (" + baseUrl + ")");
+                                statusView.setTextColor(Color.rgb(90, 220, 120));
+                            }
+                            lastLeaderboardCache = formatLeaderboardRankingText(rawResp);
+                            board.setText(lastLeaderboardCache);
+                        });
+                    }
+                } else {
+                    throw new IOException("HTTP error code: " + code);
+                }
+            } catch (Exception ex) {
+                runOnUiThread(() -> {
+                    isLeaderboardConnected = false;
+                    if (activeLeaderboardBadge != null) {
+                        activeLeaderboardBadge.update("○ Cloud Offline • " + baseUrl, Color.rgb(255, 110, 110));
+                    } else if (statusView != null) {
+                        statusView.setText("○ Cloud Offline (" + baseUrl + ")");
+                        statusView.setTextColor(Color.rgb(255, 110, 110));
+                    }
+                    board.setText("Could not reach Global Cloud Gateway:\n" + baseUrl + "\n\nDetails: " + ex.getMessage() +
+                            "\n\nTips:\n• Verify your internet / Wi-Fi connection.\n• Free Render services may take ~30s to spin up if sleeping.\n• Switch to '🏠 LOCAL LAN' tab for offline/classroom play.");
+                    if (showUserAlerts) {
+                        showFantasyAlertDialog("CLOUD CONNECTION NOTICE", "Could not connect to Cloud Gateway at " + baseUrl + ":\n" + ex.getMessage());
+                    }
+                });
+            }
+        });
+    }
+
+    void sendCloudScore(String name, int scoreVal, String genderVal) {
+        if (name == null || name.trim().isEmpty()) return;
+        backgroundExecutor.submit(() -> {
+            try {
+                String baseUrl = prefs.getString("cloudServerUrl", "https://goquiz-global-server.onrender.com");
+                if (baseUrl == null || baseUrl.trim().isEmpty()) baseUrl = "https://goquiz-global-server.onrender.com";
+                baseUrl = baseUrl.trim();
+                if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
+                String ep = baseUrl.endsWith("/") ? baseUrl + "api/score" : baseUrl + "/api/score";
+                URL u = new URL(ep);
+                HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(6000);
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                String payload = String.format("{\"name\":\"%s\",\"score\":%d,\"gender\":\"%s\"}",
+                        sanitizeNetworkString(name.trim()),
+                        scoreVal,
+                        sanitizeNetworkString(genderVal != null && !genderVal.trim().isEmpty() ? genderVal : "Adventurer"));
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(payload.getBytes(StandardCharsets.UTF_8));
+                }
+                conn.getResponseCode();
+            } catch (Exception ignored) {}
+        });
     }
 
     void executeLeaderboardFetch(String h, String prt, TextView board, TextView statusView, boolean showUserAlerts) {
@@ -5310,6 +5577,10 @@ public class MainActivity extends Activity {
     void uploadStudentScoreToLeaderboard() {
         if (studentName == null || studentName.trim().isEmpty()) return;
         final int uploadScore = getStudentBestScore();
+        // 1. Submit score to Global Cloud Server (Render & Supabase)
+        sendCloudScore(studentName, uploadScore, gender);
+
+        // 2. Submit score to Local LAN QuizServer
         String host = (embeddedServer != null && embeddedServer.isRunning())
                 ? "127.0.0.1"
                 : prefs.getString("serverHost", "127.0.0.1");
