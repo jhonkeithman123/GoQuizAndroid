@@ -757,7 +757,8 @@ app.post('/api/room/create', (req: Request, res: Response) => {
 
 // Lookup Room Details by Code
 app.get('/api/room/:code', (req: Request, res: Response) => {
-  const code = (req.params.code || '').trim().toUpperCase();
+  const paramCode = req.params.code;
+  const code = (Array.isArray(paramCode) ? paramCode[0] : (paramCode || '')).trim().toUpperCase();
   console.log(`[API] GET /api/room/${code}`);
   const room = rooms.get(code);
   if (!room || room.finished) {
