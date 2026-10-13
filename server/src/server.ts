@@ -1183,10 +1183,13 @@ server.listen(HTTP_PORT, () => {
 if (process.env.ENABLE_TCP !== 'false' && TCP_PORT !== HTTP_PORT) {
   try {
     const tcpServer: TcpServer = net.createServer((socket: TcpSocket) => {
+      const isLocalProbe = socket.remoteAddress === '::1' || socket.remoteAddress === '127.0.0.1';
       const ip = `${socket.remoteAddress}:${socket.remotePort}`;
       const session = new ClientSession('tcp', socket, ip);
       activeSessions.add(session);
-      console.log(`[TCP] Client connected from ${ip}`);
+      if (!isLocalProbe) {
+        console.log(`[TCP] Client connected from ${ip}`);
+      }
 
       let buffer = '';
       socket.on('data', (chunk: Buffer) => {
@@ -1199,11 +1202,17 @@ if (process.env.ENABLE_TCP !== 'false' && TCP_PORT !== HTTP_PORT) {
       });
 
       socket.on('close', () => {
-        console.log(`[TCP] Client disconnected: ${ip}`);
+        if (!isLocalProbe) {
+          console.log(`[TCP] Client disconnected: ${ip}`);
+        }
         session.cleanup();
       });
 
-      socket.on('error', (err: Error) => {
+      socket.on('error', (err: any) => {
+        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') {
+          // Silent for port probes / abrupt TCP drop
+          return;
+        }
         console.warn(`[TCP ${ip}] Error:`, err.message);
       });
     });
