@@ -4964,7 +4964,7 @@ public class MainActivity extends Activity {
         cloudInputRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         EditText cloudUrl = createStyledEditText("Cloud URL (e.g. https://goquiz...)");
-        cloudUrl.setText(prefs.getString("cloudServerUrl", "https://goquiz-global-server.onrender.com"));
+        cloudUrl.setText(prefs.getString("cloudServerUrl", "https://goquizandroid.onrender.com"));
         cloudUrl.setTextSize(13);
         cloudUrl.setPadding((int) (12 * density), (int) (8 * density), (int) (12 * density), (int) (8 * density));
 
@@ -5408,8 +5408,8 @@ public class MainActivity extends Activity {
         if (name == null || name.trim().isEmpty()) return;
         backgroundExecutor.submit(() -> {
             try {
-                String baseUrl = prefs.getString("cloudServerUrl", "https://goquiz-global-server.onrender.com");
-                if (baseUrl == null || baseUrl.trim().isEmpty()) baseUrl = "https://goquiz-global-server.onrender.com";
+                String baseUrl = prefs.getString("cloudServerUrl", "https://goquizandroid.onrender.com");
+                if (baseUrl == null || baseUrl.trim().isEmpty()) baseUrl = "https://goquizandroid.onrender.com";
                 baseUrl = baseUrl.trim();
                 if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
                 String ep = baseUrl.endsWith("/") ? baseUrl + "api/score" : baseUrl + "/api/score";

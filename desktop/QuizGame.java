@@ -89,7 +89,7 @@ public class QuizGame extends JFrame {
     private int onlineServerPort = 5050;
     private boolean onlineAutoConnect = true;
     private String leaderboardMode = "ONLINE";
-    private String cloudServerUrl = "https://goquiz-global-server.onrender.com";
+    private String cloudServerUrl = "https://goquizandroid.onrender.com";
 
     // The computer running the game can automatically host the shared leaderboard.
     // Other devices can connect to this computer using its LAN IP address.
@@ -3347,7 +3347,7 @@ public class QuizGame extends JFrame {
         if (name == null || name.trim().isEmpty()) return;
         new Thread(() -> {
             try {
-                String baseUrl = cloudServerUrl != null ? cloudServerUrl.trim() : "https://goquiz-global-server.onrender.com";
+                String baseUrl = cloudServerUrl != null ? cloudServerUrl.trim() : "https://goquizandroid.onrender.com";
                 if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
                     baseUrl = "https://" + baseUrl;
                 }
@@ -8337,7 +8337,7 @@ public class QuizGame extends JFrame {
             masterVolumePercent = Math.max(0, Math.min(100, Integer.parseInt(p.getProperty("masterVolume", "80"))));
             difficulty = p.getProperty("difficulty", "Medium");
             leaderboardMode = p.getProperty("leaderboardMode", "ONLINE");
-            cloudServerUrl = p.getProperty("cloudServerUrl", "https://goquiz-global-server.onrender.com");
+            cloudServerUrl = p.getProperty("cloudServerUrl", "https://goquizandroid.onrender.com");
         } catch (Exception ignored) {}
     }
 
