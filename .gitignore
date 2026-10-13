@@ -14,3 +14,8 @@ apks/
 app/build/outputs/
 .tmp/
 dist/
+node_modules/
+**/node_modules/
+.env
+*.env
+server/data/

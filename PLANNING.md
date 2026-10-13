@@ -176,4 +176,7 @@ This architecture provides the ideal balance:
 - **Backwards Compatibility:** Keeps existing LAN and offline features intact.
 - **Minimal Cost:** Easily runs within free-tier cloud limits.
 
-*No code changes have been made yet. When ready to proceed, we will start with Phase 1 by creating a standalone headless cloud server package.*
+### Status Update:
+- **Phase 1 (Implemented):** Standalone cloud server built in [`server/`](./server/) using **Node.js, Express, WebSockets (`ws`), Bun**, and **Supabase (PostgreSQL)**, with **Render 1-click Blueprint** ([`render.yaml`](./render.yaml)).
+- **Next Step (Phase 2):** Connecting Android & Desktop clients to the Render WebSocket URL!
+
