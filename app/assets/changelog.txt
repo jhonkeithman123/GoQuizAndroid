@@ -1,3 +1,10 @@
+[v1.2.1-b2] - Global & LAN Duel Rooms & Dual-Network Scanner
+• Added Host Scope Selector: choose between '🌐 GLOBAL (Cloud Gateway)' and '🏠 LOCAL LAN' when creating duel rooms.
+• Added Dual-Network Room Scanner: automatically searches and cleanly separates Global Public rooms and Local LAN rooms.
+• Added Sub-Tab Filters in Rooms: toggle between [ALL ROOMS], [🌐 GLOBAL], and [🏠 LOCAL LAN].
+• Added Visual Network Boundary / Barrier cleanly separating Cloud and LAN duel lobbies.
+• Quick Join supports both 4-letter Cloud codes and 4-digit LAN codes with network routing.
+
 [v1.2.1-b1] - Global Online Cloud Leaderboard Beta
 • Added Dual-Mode Leaderboard: Global Online (Cloud) and Local LAN (Offline Wi-Fi/Hotspot).
 • Global high scores synced in real-time with Render Cloud Server and Supabase PostgreSQL.

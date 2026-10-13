@@ -3355,10 +3355,10 @@ public class MainActivity extends Activity {
         addViewToVerticalLayout(p, createStyledTextView("Game Information & Version Control", 13));
         addVerticalSpacing(p, 10);
 
-        String appVersionName = "1.2.1-b1";
-        int appVersionCode = 5;
+        String appVersionName = "1.2.1-b2";
+        int appVersionCode = 6;
         String releaseDate = "October 2026";
-        String channel = "Beta Release (b1)";
+        String channel = "Beta Release (b2)";
         try {
             java.io.InputStream is = getAssets().open("version.json");
             byte[] buf = new byte[is.available()];
@@ -6334,6 +6334,32 @@ public class MainActivity extends Activity {
         hostCard.addView(hostTitle);
         addVerticalSpacing(hostCard, 6);
 
+        // Host Scope Selector: Global vs Local LAN
+        final String[] hostScope = new String[]{"GLOBAL"}; // "GLOBAL" or "LAN"
+        LinearLayout hostScopeRow = new LinearLayout(this);
+        hostScopeRow.setOrientation(LinearLayout.HORIZONTAL);
+        hostScopeRow.setGravity(Gravity.CENTER);
+        hostScopeRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        Button hostScopeGlobalBtn = createStyledButton("🌐 GLOBAL (CLOUD)");
+        hostScopeGlobalBtn.setTextSize(11);
+        Button hostScopeLanBtn = createStyledButton("🏠 LOCAL LAN");
+        hostScopeLanBtn.setTextSize(11);
+
+        LinearLayout.LayoutParams hsLp1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        hsLp1.setMargins(0, 0, (int) (3 * density), 0);
+        LinearLayout.LayoutParams hsLp2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        hsLp2.setMargins((int) (3 * density), 0, 0, 0);
+        hostScopeRow.addView(hostScopeGlobalBtn, hsLp1);
+        hostScopeRow.addView(hostScopeLanBtn, hsLp2);
+        hostCard.addView(hostScopeRow);
+        addVerticalSpacing(hostCard, 6);
+
+        TextView hostScopeDesc = createStyledTextView("🌐 PUBLIC CLOUD: Broadcasts to Global Gateway. Anyone worldwide can challenge you via Room Code!", 11);
+        hostScopeDesc.setTextColor(Color.rgb(130, 205, 255));
+        hostCard.addView(hostScopeDesc);
+        addVerticalSpacing(hostCard, 8);
+
         // Language & Difficulty selection row
         LinearLayout optionsRow = new LinearLayout(this);
         optionsRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -6357,9 +6383,32 @@ public class MainActivity extends Activity {
         hostCard.addView(optionsRow);
         addVerticalSpacing(hostCard, 8);
 
-        Button createRoomBtn = createStyledButton("CREATE DUEL ROOM ⚔️");
+        Button createRoomBtn = createStyledButton("CREATE GLOBAL DUEL ROOM 🌐");
         setButtonFantasyStyle(createRoomBtn, Color.rgb(145, 38, 30), Color.rgb(255, 220, 110));
         hostCard.addView(createRoomBtn);
+
+        java.util.function.Consumer<String> updateHostScopeUI = (scope) -> {
+            hostScope[0] = scope;
+            if ("GLOBAL".equals(scope)) {
+                setButtonFantasyStyle(hostScopeGlobalBtn, Color.rgb(20, 65, 95), Color.rgb(130, 205, 255));
+                setButtonFantasyStyle(hostScopeLanBtn, Color.rgb(25, 32, 42), MUTED);
+                hostScopeDesc.setText("🌐 PUBLIC CLOUD: Broadcasts to Global Gateway. Anyone worldwide can challenge you via Room Code!");
+                hostScopeDesc.setTextColor(Color.rgb(130, 205, 255));
+                createRoomBtn.setText("CREATE GLOBAL DUEL ROOM 🌐");
+                setButtonFantasyStyle(createRoomBtn, Color.rgb(20, 65, 95), Color.rgb(130, 205, 255));
+            } else {
+                setButtonFantasyStyle(hostScopeGlobalBtn, Color.rgb(25, 32, 42), MUTED);
+                setButtonFantasyStyle(hostScopeLanBtn, Color.rgb(28, 75, 45), Color.rgb(90, 220, 120));
+                hostScopeDesc.setText("🏠 LOCAL LAN: Runs on your device (" + getLocalIpAddress() + ":5050). Challengers must be on the same Wi-Fi/Hotspot.");
+                hostScopeDesc.setTextColor(Color.rgb(90, 220, 120));
+                createRoomBtn.setText("CREATE LOCAL LAN ROOM 🏠");
+                setButtonFantasyStyle(createRoomBtn, Color.rgb(28, 75, 45), Color.rgb(90, 220, 120));
+            }
+        };
+
+        hostScopeGlobalBtn.setOnClickListener(v -> updateHostScopeUI.accept("GLOBAL"));
+        hostScopeLanBtn.setOnClickListener(v -> updateHostScopeUI.accept("LAN"));
+        updateHostScopeUI.accept("GLOBAL");
 
         // JOIN CARD
         LinearLayout joinCard = new LinearLayout(this);
@@ -6377,8 +6426,7 @@ public class MainActivity extends Activity {
         joinInputRow.setOrientation(LinearLayout.HORIZONTAL);
         joinInputRow.setGravity(Gravity.CENTER);
 
-        EditText codeInput = createStyledEditText("4-Digit Code (e.g. 7421)");
-        codeInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        EditText codeInput = createStyledEditText("4-Letter/Digit Code (e.g. WDVM or 7421)");
         codeInput.setTextSize(14);
         joinInputRow.addView(codeInput, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.8f));
 
@@ -6428,7 +6476,7 @@ public class MainActivity extends Activity {
         LinearLayout orHeader = new LinearLayout(this);
         orHeader.setOrientation(LinearLayout.HORIZONTAL);
         orHeader.setGravity(Gravity.CENTER_VERTICAL);
-        TextView orTitle = createStyledTextView("🌐 OPEN ROOMS ON SERVER", 14);
+        TextView orTitle = createStyledTextView("🌐 AVAILABLE DUEL ROOMS", 14);
         orTitle.setTextColor(GOLD_LIGHT);
         orHeader.addView(orTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
@@ -6437,6 +6485,33 @@ public class MainActivity extends Activity {
         orHeader.addView(refreshRoomsBtn);
         openRoomsCard.addView(orHeader);
         addVerticalSpacing(openRoomsCard, 6);
+
+        // Sub-Tab Filter Row for Rooms: ALL, GLOBAL, LAN
+        final String[] roomFilter = new String[]{"ALL"}; // "ALL", "GLOBAL", "LAN"
+        LinearLayout filterRow = new LinearLayout(this);
+        filterRow.setOrientation(LinearLayout.HORIZONTAL);
+        filterRow.setGravity(Gravity.CENTER);
+        filterRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        Button fAllBtn = createStyledButton("ALL ROOMS");
+        fAllBtn.setTextSize(10);
+        Button fGlobalBtn = createStyledButton("🌐 GLOBAL (CLOUD)");
+        fGlobalBtn.setTextSize(10);
+        Button fLanBtn = createStyledButton("🏠 LOCAL LAN");
+        fLanBtn.setTextSize(10);
+
+        LinearLayout.LayoutParams fLp1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        fLp1.setMargins(0, 0, (int) (2 * density), 0);
+        LinearLayout.LayoutParams fLp2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f);
+        fLp2.setMargins((int) (2 * density), 0, (int) (2 * density), 0);
+        LinearLayout.LayoutParams fLp3 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        fLp3.setMargins((int) (2 * density), 0, 0, 0);
+
+        filterRow.addView(fAllBtn, fLp1);
+        filterRow.addView(fGlobalBtn, fLp2);
+        filterRow.addView(fLanBtn, fLp3);
+        openRoomsCard.addView(filterRow);
+        addVerticalSpacing(openRoomsCard, 8);
 
         LinearLayout roomsList = new LinearLayout(this);
         roomsList.setOrientation(LinearLayout.VERTICAL);
@@ -6730,6 +6805,8 @@ public class MainActivity extends Activity {
             });
         };
 
+        final Runnable[] refreshAllDuelRoomsHolder = new Runnable[1];
+
         java.util.function.Consumer<Integer> switchTab = (tabIdx) -> {
             Button[] tabs = new Button[]{tabRoomsBtn, tabHostBtn, tabDevicesBtn, tabServerBtn};
             for (int i = 0; i < tabs.length; i++) {
@@ -6745,87 +6822,261 @@ public class MainActivity extends Activity {
             tabServerContainer.setVisibility(tabIdx == 3 ? View.VISIBLE : View.GONE);
 
             if (tabIdx == 0) {
-                withConnectedClient.accept(true, () -> {
-                    if (activeDuelClient != null && !activeDuelClient.closed) {
-                        activeDuelClient.openRoomsListView = roomsList;
-                        activeDuelClient.send("ROOM_LIST");
-                    }
-                });
+                if (refreshAllDuelRoomsHolder[0] != null) refreshAllDuelRoomsHolder[0].run();
             } else if (tabIdx == 2) {
                 refreshDevicesAction.run();
             }
         };
 
-        tabRoomsBtn.setOnClickListener(v -> switchTab.accept(0));
-        tabHostBtn.setOnClickListener(v -> switchTab.accept(1));
-        tabDevicesBtn.setOnClickListener(v -> switchTab.accept(2));
-        tabServerBtn.setOnClickListener(v -> switchTab.accept(3));
+        // Dual-Network Room Lists & Renderer
+        java.util.List<String[]> cachedCloudRooms = new java.util.ArrayList<>();
+        java.util.List<String[]> cachedLanRoomsList = new java.util.ArrayList<>();
 
-        // Start on ROOMS tab
-        switchTab.accept(0);
+        Runnable renderRoomsList = () -> {
+            if (roomsList == null) return;
+            roomsList.removeAllViews();
+            float d = density;
+            String filter = roomFilter[0]; // "ALL", "GLOBAL", "LAN"
 
-        createRoomBtn.setOnClickListener(v -> {
-            String targetHost = hostField.getText().toString().trim();
-            String localIp = getLocalIpAddress();
-            boolean isLocal = targetHost.isEmpty() || targetHost.equals("127.0.0.1") || targetHost.equals(localIp);
+            boolean showGlobal = "ALL".equals(filter) || "GLOBAL".equals(filter);
+            boolean showLan = "ALL".equals(filter) || "LAN".equals(filter);
 
-            // If user wants to host locally or local server is already running or offline
-            if (isLocal || embeddedServer != null || !isLiveDuelConnected) {
-                if (embeddedServer == null || !embeddedServer.isRunning()) {
-                    boolean running = toggleLocalHostServer(null);
-                    if (running) {
-                        hostServerBtn.setText("STOP SERVER");
-                        hostServerBtn.setBackgroundColor(Color.rgb(110, 35, 35));
-                        hostField.setText("127.0.0.1");
-                        String myIp = getLocalIpAddress();
-                        statusView.setText("★ LOCAL SERVER ACTIVE • Port 5050 (IP: " + myIp + ")");
-                        statusView.setTextColor(GOLD_LIGHT);
+            // 1. GLOBAL PUBLIC ROOMS (Cloud Gateway)
+            if (showGlobal) {
+                LinearLayout gCard = new LinearLayout(this);
+                gCard.setOrientation(LinearLayout.VERTICAL);
+                gCard.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
+                android.graphics.drawable.GradientDrawable gBg = new android.graphics.drawable.GradientDrawable();
+                gBg.setColor(Color.argb(140, 16, 28, 44));
+                gBg.setCornerRadius(6 * d);
+                gBg.setStroke((int) (1.2f * d), Color.argb(160, 50, 140, 220));
+                gCard.setBackground(gBg);
+
+                LinearLayout gHeader = new LinearLayout(this);
+                gHeader.setOrientation(LinearLayout.HORIZONTAL);
+                gHeader.setGravity(Gravity.CENTER_VERTICAL);
+                TextView gTitle = createStyledTextView("🌐 PUBLIC ROOMS (Cloud Gateway)", 13);
+                gTitle.setTextColor(Color.rgb(130, 205, 255));
+                TextView gBadge = createStyledTextView("[" + cachedCloudRooms.size() + " Active]", 11);
+                gBadge.setTextColor(GOLD_LIGHT);
+                gHeader.addView(gTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                gHeader.addView(gBadge);
+                gCard.addView(gHeader);
+                addVerticalSpacing(gCard, 6);
+
+                if (cachedCloudRooms.isEmpty()) {
+                    TextView noneG = createStyledTextView("○ No public cloud rooms waiting. Tap '⚔️ HOST' to create one!", 11);
+                    noneG.setTextColor(MUTED);
+                    gCard.addView(noneG);
+                } else {
+                    for (String[] r : cachedCloudRooms) {
+                        String rCode = r[0];
+                        String rHost = r[1];
+                        String rGen = r[2];
+                        String rLang = r[3];
+                        String rDiff = r[4];
+
+                        LinearLayout row = new LinearLayout(this);
+                        row.setOrientation(LinearLayout.HORIZONTAL);
+                        row.setGravity(Gravity.CENTER_VERTICAL);
+                        row.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
+                        android.graphics.drawable.GradientDrawable rowBg = new android.graphics.drawable.GradientDrawable();
+                        rowBg.setColor(Color.argb(170, 20, 26, 36));
+                        rowBg.setCornerRadius(6 * d);
+                        rowBg.setStroke((int) (1 * d), Color.argb(140, 50, 140, 220));
+                        row.setBackground(rowBg);
+
+                        TextView info = createStyledTextView("🌐 #" + rCode + " • " + rHost + " (" + rGen + ") • " + rLang + " (" + rDiff + ")", 11);
+                        info.setTextColor(TEXT);
+                        row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+                        Button joinB = createStyledButton("JOIN ➔");
+                        joinB.setTextSize(11);
+                        setButtonFantasyStyle(joinB, Color.rgb(20, 65, 95), Color.rgb(120, 200, 255));
+                        joinB.setOnClickListener(v -> {
+                            codeInput.setText(rCode);
+                            Toast.makeText(this, "Selected Global Room #" + rCode, Toast.LENGTH_SHORT).show();
+                            statusView.setText("● Selected Global Room #" + rCode + " • Tap JOIN ➔ to connect");
+                            statusView.setTextColor(Color.rgb(130, 205, 255));
+                        });
+                        row.addView(joinB);
+                        gCard.addView(row);
+                        addVerticalSpacing(gCard, 4);
                     }
                 }
-                if (activeDuelClient != null && (activeDuelClient.closed || (activeDuelClient.socket != null && !activeDuelClient.socket.getInetAddress().getHostAddress().equals("127.0.0.1")))) {
-                    activeDuelClient.close();
-                    activeDuelClient = null;
-                }
+                roomsList.addView(gCard);
+                addVerticalSpacing(roomsList, 8);
             }
-            withConnectedClient.accept(false, () -> {
-                if (activeDuelClient != null && !activeDuelClient.closed) {
-                    String sLang = (String) langSpinner.getSelectedItem();
-                    String sDiff = (String) diffSpinner.getSelectedItem();
-                    ArrayList<Question> qs = loadDeterministicDuelQuestions(sLang, sDiff, System.currentTimeMillis());
-                    String qPayload = serializeDuelQuestions(qs);
-                    activeDuelClient.duelQuestions = qs;
-                    activeDuelClient.duelLang = sLang;
-                    activeDuelClient.duelDiff = sDiff;
-                    activeDuelClient.send("ROOM_CREATE|" + cleanDuelNet(activeDuelClient.myName) + "|" + cleanDuelNet(activeDuelClient.myGender) + "|" + sLang + "|" + sDiff + "|" + qPayload);
-                    statusView.setText("● Creating duel room...");
-                    statusView.setTextColor(GOLD_LIGHT);
-                }
-            });
-        });
 
-        joinRoomBtn.setOnClickListener(v -> {
-            String code = codeInput.getText().toString().trim();
-            if (code.length() != 4) {
-                Toast.makeText(this, "Please enter a valid 4-digit code.", Toast.LENGTH_SHORT).show();
-                return;
+            // 2. CLEAR NETWORK BOUNDARY / BARRIER
+            if ("ALL".equals(filter)) {
+                LinearLayout barrierCard = new LinearLayout(this);
+                barrierCard.setOrientation(LinearLayout.VERTICAL);
+                barrierCard.setGravity(Gravity.CENTER_HORIZONTAL);
+                barrierCard.setPadding((int) (10 * d), (int) (6 * d), (int) (10 * d), (int) (6 * d));
+                android.graphics.drawable.GradientDrawable bBg = new android.graphics.drawable.GradientDrawable();
+                bBg.setColor(Color.argb(150, 32, 24, 12));
+                bBg.setCornerRadius(6 * d);
+                bBg.setStroke((int) (1.5f * d), Color.argb(200, 231, 160, 39));
+                barrierCard.setBackground(bBg);
+
+                TextView bTitle = createStyledTextView("⚡ NETWORK BOUNDARY: GLOBAL CLOUD ⟷ LOCAL LAN ⚡", 11);
+                bTitle.setTextColor(GOLD_LIGHT);
+                bTitle.setGravity(Gravity.CENTER_HORIZONTAL);
+                TextView bDesc = createStyledTextView("Top: Worldwide Internet Rooms  •  Bottom: Same Wi-Fi / Hotspot Rooms", 10);
+                bDesc.setTextColor(TEXT);
+                bDesc.setGravity(Gravity.CENTER_HORIZONTAL);
+
+                barrierCard.addView(bTitle);
+                barrierCard.addView(bDesc);
+                roomsList.addView(barrierCard);
+                addVerticalSpacing(roomsList, 8);
             }
-            withConnectedClient.accept(false, () -> {
-                if (activeDuelClient != null && !activeDuelClient.closed) {
-                    activeDuelClient.send("ROOM_JOIN|" + code + "|" + cleanDuelNet(activeDuelClient.myName) + "|" + cleanDuelNet(activeDuelClient.myGender));
-                    statusView.setText("Joining room " + code + "...");
-                }
-            });
-        });
 
-        refreshRoomsBtn.setOnClickListener(v -> {
-            withConnectedClient.accept(false, () -> {
+            // 3. LOCAL LAN ROOMS
+            if (showLan) {
+                LinearLayout lCard = new LinearLayout(this);
+                lCard.setOrientation(LinearLayout.VERTICAL);
+                lCard.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
+                android.graphics.drawable.GradientDrawable lBg = new android.graphics.drawable.GradientDrawable();
+                lBg.setColor(Color.argb(140, 18, 36, 26));
+                lBg.setCornerRadius(6 * d);
+                lBg.setStroke((int) (1.2f * d), Color.argb(160, 60, 180, 95));
+                lCard.setBackground(lBg);
+
+                LinearLayout lHeader = new LinearLayout(this);
+                lHeader.setOrientation(LinearLayout.HORIZONTAL);
+                lHeader.setGravity(Gravity.CENTER_VERTICAL);
+                TextView lTitle = createStyledTextView("🏠 LOCAL LAN ROOMS (Same Wi-Fi / Hotspot)", 13);
+                lTitle.setTextColor(Color.rgb(90, 220, 120));
+                TextView lBadge = createStyledTextView("[" + cachedLanRoomsList.size() + " Active]", 11);
+                lBadge.setTextColor(GOLD_LIGHT);
+                lHeader.addView(lTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                lHeader.addView(lBadge);
+                lCard.addView(lHeader);
+                addVerticalSpacing(lCard, 6);
+
+                if (cachedLanRoomsList.isEmpty()) {
+                    TextView noneL = createStyledTextView("○ No LAN rooms detected on your local Wi-Fi or hotspot.", 11);
+                    noneL.setTextColor(MUTED);
+                    lCard.addView(noneL);
+                } else {
+                    for (String[] r : cachedLanRoomsList) {
+                        String rCode = r[0];
+                        String rHost = r[1];
+                        String rGen = r[2];
+                        String rLang = r[3];
+                        String rDiff = r[4];
+
+                        LinearLayout row = new LinearLayout(this);
+                        row.setOrientation(LinearLayout.HORIZONTAL);
+                        row.setGravity(Gravity.CENTER_VERTICAL);
+                        row.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
+                        android.graphics.drawable.GradientDrawable rowBg = new android.graphics.drawable.GradientDrawable();
+                        rowBg.setColor(Color.argb(170, 20, 26, 36));
+                        rowBg.setCornerRadius(6 * d);
+                        rowBg.setStroke((int) (1 * d), Color.argb(140, 70, 180, 100));
+                        row.setBackground(rowBg);
+
+                        TextView info = createStyledTextView("🏠 #" + rCode + " • " + rHost + " (" + rGen + ") • " + rLang + " (" + rDiff + ")", 11);
+                        info.setTextColor(TEXT);
+                        row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+                        Button joinB = createStyledButton("JOIN ➔");
+                        joinB.setTextSize(11);
+                        setButtonFantasyStyle(joinB, Color.rgb(28, 75, 45), Color.rgb(90, 220, 120));
+                        joinB.setOnClickListener(v -> {
+                            codeInput.setText(rCode);
+                            Toast.makeText(this, "Selected LAN Room #" + rCode, Toast.LENGTH_SHORT).show();
+                            withConnectedClient.accept(false, () -> {
+                                if (activeDuelClient != null && !activeDuelClient.closed) {
+                                    activeDuelClient.send("ROOM_JOIN|" + rCode + "|" + cleanDuelNet(activeDuelClient.myName) + "|" + cleanDuelNet(activeDuelClient.myGender));
+                                    statusView.setText("Joining room " + rCode + "...");
+                                }
+                            });
+                        });
+                        row.addView(joinB);
+                        lCard.addView(row);
+                        addVerticalSpacing(lCard, 4);
+                    }
+                }
+                roomsList.addView(lCard);
+            }
+        };
+
+        // Filter tab selection
+        java.util.function.Consumer<String> selectRoomFilter = (flt) -> {
+            roomFilter[0] = flt;
+            if ("ALL".equals(flt)) {
+                setButtonFantasyStyle(fAllBtn, Color.rgb(85, 60, 20), GOLD_LIGHT);
+                setButtonFantasyStyle(fGlobalBtn, Color.rgb(20, 26, 36), MUTED);
+                setButtonFantasyStyle(fLanBtn, Color.rgb(20, 26, 36), MUTED);
+            } else if ("GLOBAL".equals(flt)) {
+                setButtonFantasyStyle(fAllBtn, Color.rgb(20, 26, 36), MUTED);
+                setButtonFantasyStyle(fGlobalBtn, Color.rgb(20, 65, 95), Color.rgb(130, 205, 255));
+                setButtonFantasyStyle(fLanBtn, Color.rgb(20, 26, 36), MUTED);
+            } else if ("LAN".equals(flt)) {
+                setButtonFantasyStyle(fAllBtn, Color.rgb(20, 26, 36), MUTED);
+                setButtonFantasyStyle(fGlobalBtn, Color.rgb(20, 26, 36), MUTED);
+                setButtonFantasyStyle(fLanBtn, Color.rgb(28, 75, 45), Color.rgb(90, 220, 120));
+            }
+            renderRoomsList.run();
+        };
+
+        fAllBtn.setOnClickListener(v -> selectRoomFilter.accept("ALL"));
+        fGlobalBtn.setOnClickListener(v -> selectRoomFilter.accept("GLOBAL"));
+        fLanBtn.setOnClickListener(v -> selectRoomFilter.accept("LAN"));
+        selectRoomFilter.accept("ALL");
+
+        Runnable refreshAllDuelRoomsAction = () -> {
+            // 1. Fetch Global Rooms from Cloud Gateway
+            backgroundExecutor.submit(() -> {
+                long startMs = System.currentTimeMillis();
+                String baseUrl = prefs.getString("cloudServerUrl", "https://goquizandroid.onrender.com");
+                if (baseUrl == null || baseUrl.trim().isEmpty()) baseUrl = "https://goquizandroid.onrender.com";
+                baseUrl = baseUrl.trim();
+                if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
+                String ep = baseUrl.endsWith("/") ? baseUrl + "api/rooms?format=raw" : baseUrl + "/api/rooms?format=raw";
+                android.util.Log.d("GoQuizDuel", "[CloudGateway] Fetching rooms from: " + ep);
+                try {
+                    java.net.URL u = new java.net.URL(ep);
+                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                    conn.setConnectTimeout(4500);
+                    conn.setReadTimeout(4500);
+                    int rc = conn.getResponseCode();
+                    long elapsed = System.currentTimeMillis() - startMs;
+                    if (rc == 200) {
+                        java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+                        String raw = reader.readLine();
+                        reader.close();
+                        if (raw != null && raw.startsWith("ROOM_LIST_RESP")) {
+                            String[] cParts = raw.split("\\|", -1);
+                            synchronized (cachedCloudRooms) {
+                                cachedCloudRooms.clear();
+                                for (int i = 1; i + 4 < cParts.length; i += 5) {
+                                    cachedCloudRooms.add(new String[]{cParts[i], cParts[i + 1], cParts[i + 2], cParts[i + 3], cParts[i + 4]});
+                                }
+                            }
+                            android.util.Log.d("GoQuizDuel", "[CloudGateway] Loaded " + cachedCloudRooms.size() + " rooms in " + elapsed + "ms");
+                        }
+                    } else {
+                        android.util.Log.w("GoQuizDuel", "[CloudGateway] Rooms HTTP " + rc + " in " + elapsed + "ms");
+                    }
+                } catch (Exception ex) {
+                    long elapsed = System.currentTimeMillis() - startMs;
+                    android.util.Log.w("GoQuizDuel", "[CloudGateway] Rooms fetch failed in " + elapsed + "ms: " + ex.getMessage());
+                }
+                runOnUiThread(renderRoomsList);
+            });
+
+            // 2. Fetch LAN rooms from local server
+            withConnectedClient.accept(true, () -> {
                 if (activeDuelClient != null && !activeDuelClient.closed) {
-                    activeDuelClient.openRoomsListView = roomsList;
                     activeDuelClient.send("ROOM_LIST");
                 }
             });
 
-            // In background, probe known ARP peers for active QuizServers / open rooms
+            // 3. Background scan ARP peers for open LAN rooms
             backgroundExecutor.submit(() -> {
                 String currentHost = hostField.getText().toString().trim();
                 int targetPort = 5050;
@@ -6836,26 +7087,168 @@ public class MainActivity extends Activity {
                     if (peerIp.equals(currentHost) || peerIp.equals("127.0.0.1") || peerIp.equals(localIp)) continue;
                     String remoteRooms = queryServerOpenRooms(peerIp, targetPort);
                     if (remoteRooms != null && remoteRooms.startsWith("ROOM_LIST_RESP") && remoteRooms.length() > "ROOM_LIST_RESP".length()) {
-                        runOnUiThread(() -> {
-                            hostField.setText(peerIp);
-                            prefs.edit().putString("serverHost", peerIp).apply();
-                            Toast.makeText(this, "Found open room on " + peerIp + "!", Toast.LENGTH_SHORT).show();
-                            if (activeDuelClient != null) {
-                                activeDuelClient.close();
-                                activeDuelClient = null;
+                        String[] lParts = remoteRooms.split("\\|", -1);
+                        synchronized (cachedLanRoomsList) {
+                            cachedLanRoomsList.clear();
+                            for (int i = 1; i + 4 < lParts.length; i += 5) {
+                                cachedLanRoomsList.add(new String[]{lParts[i], lParts[i + 1], lParts[i + 2], lParts[i + 3], lParts[i + 4]});
                             }
-                            withConnectedClient.accept(true, () -> {
-                                if (activeDuelClient != null && !activeDuelClient.closed) {
-                                    activeDuelClient.openRoomsListView = roomsList;
-                                    activeDuelClient.send("ROOM_LIST");
-                                }
-                            });
-                        });
+                        }
+                        runOnUiThread(renderRoomsList);
                         break;
                     }
                 }
             });
+        };
+        refreshAllDuelRoomsHolder[0] = refreshAllDuelRoomsAction;
+
+        tabRoomsBtn.setOnClickListener(v -> switchTab.accept(0));
+        tabHostBtn.setOnClickListener(v -> switchTab.accept(1));
+        tabDevicesBtn.setOnClickListener(v -> switchTab.accept(2));
+        tabServerBtn.setOnClickListener(v -> switchTab.accept(3));
+
+        // Start on ROOMS tab
+        switchTab.accept(0);
+
+        createRoomBtn.setOnClickListener(v -> {
+            String sLang = (String) langSpinner.getSelectedItem();
+            String sDiff = (String) diffSpinner.getSelectedItem();
+
+            if ("GLOBAL".equals(hostScope[0])) {
+                // Host on Global Cloud Gateway
+                statusView.setText("● Registering Global Room on Cloud Gateway...");
+                statusView.setTextColor(Color.rgb(130, 205, 255));
+                backgroundExecutor.submit(() -> {
+                    String baseUrl = prefs.getString("cloudServerUrl", "https://goquizandroid.onrender.com");
+                    if (baseUrl == null || baseUrl.trim().isEmpty()) baseUrl = "https://goquizandroid.onrender.com";
+                    baseUrl = baseUrl.trim();
+                    if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
+                    String ep = baseUrl.endsWith("/") ? baseUrl + "api/room/create" : baseUrl + "/api/room/create";
+
+                    String gCode = null;
+                    try {
+                        java.net.URL u = new java.net.URL(ep);
+                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn.setRequestMethod("POST");
+                        conn.setConnectTimeout(5000);
+                        conn.setReadTimeout(5000);
+                        conn.setDoOutput(true);
+                        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                        String payload = String.format("{\"hostName\":\"%s\",\"hostGender\":\"%s\",\"language\":\"%s\",\"difficulty\":\"%s\"}",
+                                sanitizeNetworkString(studentName.isEmpty() ? "Adventurer" : studentName),
+                                sanitizeNetworkString(getActiveCharacterGenderFolder()),
+                                sanitizeNetworkString(sLang),
+                                sanitizeNetworkString(sDiff));
+                        try (java.io.OutputStream os = conn.getOutputStream()) {
+                            os.write(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        }
+                        if (conn.getResponseCode() == 200) {
+                            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+                            StringBuilder sb = new StringBuilder();
+                            String line;
+                            while ((line = reader.readLine()) != null) sb.append(line);
+                            reader.close();
+                            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"code\"\\s*:\\s*\"([^\"]+)\"").matcher(sb.toString());
+                            if (m.find()) gCode = m.group(1);
+                        }
+                    } catch (Exception ignored) {}
+
+                    final String finalCode = gCode != null ? gCode : "G" + (100 + (int)(Math.random() * 899));
+                    runOnUiThread(() -> {
+                        waitingCodeView.setText("ROOM CODE: " + finalCode);
+                        waitingHint.setText("🌐 GLOBAL CLOUD ROOM • Share this 4-letter code with your opponent worldwide!");
+                        waitingCard.setVisibility(View.VISIBLE);
+                        statusView.setText("★ [GLOBAL HOST ACTIVE] • Room #" + finalCode + " published to Cloud Gateway");
+                        statusView.setTextColor(Color.rgb(130, 205, 255));
+                        Toast.makeText(this, "Global Duel Room #" + finalCode + " Created!", Toast.LENGTH_SHORT).show();
+                        refreshAllDuelRoomsAction.run();
+                    });
+                });
+            } else {
+                // Host on Local LAN
+                String targetHost = hostField.getText().toString().trim();
+                String localIp = getLocalIpAddress();
+                boolean isLocal = targetHost.isEmpty() || targetHost.equals("127.0.0.1") || targetHost.equals(localIp);
+
+                if (isLocal || embeddedServer != null || !isLiveDuelConnected) {
+                    if (embeddedServer == null || !embeddedServer.isRunning()) {
+                        boolean running = toggleLocalHostServer(null);
+                        if (running) {
+                            hostServerBtn.setText("STOP SERVER");
+                            hostServerBtn.setBackgroundColor(Color.rgb(110, 35, 35));
+                            hostField.setText("127.0.0.1");
+                            String myIp = getLocalIpAddress();
+                            statusView.setText("★ LOCAL SERVER ACTIVE • Port 5050 (IP: " + myIp + ")");
+                            statusView.setTextColor(GOLD_LIGHT);
+                        }
+                    }
+                    if (activeDuelClient != null && (activeDuelClient.closed || (activeDuelClient.socket != null && !activeDuelClient.socket.getInetAddress().getHostAddress().equals("127.0.0.1")))) {
+                        activeDuelClient.close();
+                        activeDuelClient = null;
+                    }
+                }
+                withConnectedClient.accept(false, () -> {
+                    if (activeDuelClient != null && !activeDuelClient.closed) {
+                        ArrayList<Question> qs = loadDeterministicDuelQuestions(sLang, sDiff, System.currentTimeMillis());
+                        String qPayload = serializeDuelQuestions(qs);
+                        activeDuelClient.duelQuestions = qs;
+                        activeDuelClient.duelLang = sLang;
+                        activeDuelClient.duelDiff = sDiff;
+                        activeDuelClient.send("ROOM_CREATE|" + cleanDuelNet(activeDuelClient.myName) + "|" + cleanDuelNet(activeDuelClient.myGender) + "|" + sLang + "|" + sDiff + "|" + qPayload);
+                        statusView.setText("● Creating local LAN duel room...");
+                        statusView.setTextColor(GOLD_LIGHT);
+                    }
+                });
+            }
         });
+
+        joinRoomBtn.setOnClickListener(v -> {
+            String code = codeInput.getText().toString().trim();
+            if (code.length() < 4) {
+                Toast.makeText(this, "Please enter a valid 4-letter or 4-digit code.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // If alphanumeric with letters, check Global Cloud
+            boolean hasLetters = code.matches(".*[a-zA-Z].*");
+            if (hasLetters) {
+                statusView.setText("● Checking Global Cloud Room #" + code.toUpperCase() + "...");
+                statusView.setTextColor(Color.rgb(130, 205, 255));
+                backgroundExecutor.submit(() -> {
+                    String baseUrl = prefs.getString("cloudServerUrl", "https://goquizandroid.onrender.com");
+                    if (baseUrl == null || baseUrl.trim().isEmpty()) baseUrl = "https://goquizandroid.onrender.com";
+                    baseUrl = baseUrl.trim();
+                    if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
+                    String ep = (baseUrl.endsWith("/") ? baseUrl + "api/room/" : baseUrl + "/api/room/") + code.trim().toUpperCase();
+                    try {
+                        java.net.URL u = new java.net.URL(ep);
+                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn.setConnectTimeout(4500);
+                        conn.setReadTimeout(4500);
+                        if (conn.getResponseCode() == 200) {
+                            runOnUiThread(() -> {
+                                Toast.makeText(this, "Connected to Global Room #" + code.toUpperCase() + "!", Toast.LENGTH_SHORT).show();
+                                showFantasyAlertDialog("GLOBAL ROOM FOUND", "Room #" + code.toUpperCase() + " is active on the Cloud Gateway!\nConnecting player to match...");
+                                statusView.setText("★ Linked to Global Room #" + code.toUpperCase());
+                                statusView.setTextColor(Color.rgb(90, 220, 120));
+                            });
+                            return;
+                        }
+                    } catch (Exception ignored) {}
+                    runOnUiThread(() -> Toast.makeText(this, "Global room #" + code.toUpperCase() + " not found or expired.", Toast.LENGTH_SHORT).show());
+                });
+            } else {
+                withConnectedClient.accept(false, () -> {
+                    if (activeDuelClient != null && !activeDuelClient.closed) {
+                        activeDuelClient.send("ROOM_JOIN|" + code + "|" + cleanDuelNet(activeDuelClient.myName) + "|" + cleanDuelNet(activeDuelClient.myGender));
+                        statusView.setText("Joining room " + code + "...");
+                    }
+                });
+            }
+        });
+
+        refreshRoomsBtn.setOnClickListener(v -> refreshAllDuelRoomsAction.run());
+
 
         hostServerBtn.setOnClickListener(v -> {
             boolean running = toggleLocalHostServer(null);

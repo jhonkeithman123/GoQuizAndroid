@@ -354,6 +354,11 @@ class ClientSession implements IClientSession {
           tcp.write(msg + '\n');
         }
       }
+      const isProbe = this.remoteAddress.startsWith('::1') || this.remoteAddress.startsWith('127.0.0.1');
+      if (!isProbe || (msg !== 'PONG' && msg !== 'OK')) {
+        const preview = msg.length > 70 ? msg.slice(0, 70) + '...' : msg;
+        console.log(`[${this.type.toUpperCase()} ${this.remoteAddress}] ⬅ SENT: ${preview}`);
+      }
     } catch (err: any) {
       console.warn(`[Session ${this.remoteAddress}] Send error:`, err.message);
     }
@@ -390,6 +395,12 @@ class ClientSession implements IClientSession {
 
     const p = raw.split('|');
     const cmd = p[0];
+
+    const isProbe = this.remoteAddress.startsWith('::1') || this.remoteAddress.startsWith('127.0.0.1');
+    if (!isProbe || cmd !== 'PING') {
+      const preview = raw.length > 70 ? raw.slice(0, 70) + '...' : raw;
+      console.log(`[${this.type.toUpperCase()} ${this.remoteAddress}] ➔ RECV [${cmd}]: ${preview}`);
+    }
 
     switch (cmd) {
       case 'HELLO': {
@@ -596,6 +607,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Graceful JSON syntax error handler
+app.use((err: any, req: Request, res: Response, next: any) => {
+  if (err instanceof SyntaxError && 'body' in err) {
+    console.warn(`[HTTP 400] Malformed JSON in ${req.method} ${req.url}: ${err.message}`);
+    return res.status(400).json({ error: 'Malformed JSON payload' });
+  }
+  next(err);
+});
+
+// HTTP Request Logger Middleware
+app.use((req: Request, res: Response, next) => {
+  const start = Date.now();
+  const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const status = res.statusCode;
+    const method = req.method;
+    const url = req.originalUrl || req.url;
+    // Suppress spamming console on automated background self-pings
+    if (url.startsWith('/api/keep-alive') || url === '/ping' || url === '/health') {
+      return;
+    }
+    console.log(`[HTTP ${method}] ${url} -> ${status} (${duration}ms) [${ip}]`);
+  });
+  next();
+});
+
 // Anti-Sleep Keep-Alive & Cron Job Endpoints
 let lastKeepAlivePing: number = Date.now();
 let keepAliveCount: number = 0;
@@ -667,6 +705,20 @@ app.post('/api/score', async (req: Request, res: Response) => {
 
 // Active Open Rooms Endpoint
 app.get('/api/rooms', (req: Request, res: Response) => {
+  const format = req.query.format as string;
+  console.log(`[API] GET /api/rooms (format=${format || 'json'}, activeRooms=${rooms.size})`);
+  
+  if (format === 'raw') {
+    let resp = 'ROOM_LIST_RESP';
+    for (const r of rooms.values()) {
+      if (!r.finished && !r.guestSession) {
+        resp += `|${r.code}|${clean(r.hostName)}|${clean(r.hostGender)}|${clean(r.language)}|${clean(r.difficulty)}`;
+      }
+    }
+    res.type('text/plain').send(resp);
+    return;
+  }
+
   const roomList: RoomSummary[] = [];
   for (const r of rooms.values()) {
     if (!r.finished) {
@@ -684,6 +736,45 @@ app.get('/api/rooms', (req: Request, res: Response) => {
   }
   res.json({ rooms: roomList });
 });
+
+// Create Room via REST
+app.post('/api/room/create', (req: Request, res: Response) => {
+  const { hostName, hostGender, language, difficulty, questionsPayload } = req.body || {};
+  const code = generateRoomCode();
+  const room = new DuelRoom(
+    code,
+    clean(hostName || 'Host'),
+    clean(hostGender || 'Boy'),
+    clean(language || 'HTML'),
+    clean(difficulty || 'Easy'),
+    null as any
+  );
+  room.questionsPayload = questionsPayload || '';
+  rooms.set(code, room);
+  console.log(`[Room REST] Created Room #${code} by ${hostName} (${language} - ${difficulty})`);
+  res.json({ success: true, code, language: room.language, difficulty: room.difficulty });
+});
+
+// Lookup Room Details by Code
+app.get('/api/room/:code', (req: Request, res: Response) => {
+  const code = (req.params.code || '').trim().toUpperCase();
+  console.log(`[API] GET /api/room/${code}`);
+  const room = rooms.get(code);
+  if (!room || room.finished) {
+    res.status(404).json({ error: `Room ${code} not found or expired` });
+    return;
+  }
+  res.json({
+    code: room.code,
+    hostName: room.hostName,
+    hostGender: room.hostGender,
+    language: room.language,
+    difficulty: room.difficulty,
+    active: room.active,
+    waiting: !room.guestSession
+  });
+});
+
 
 // Stats summary
 app.get('/api/stats', (req: Request, res: Response) => {

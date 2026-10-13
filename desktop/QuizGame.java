@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Random;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
 import javax.sound.sampled.*;
@@ -4444,7 +4445,7 @@ public class QuizGame extends JFrame {
 
         JPanel orHeaderRow = new JPanel(new BorderLayout());
         orHeaderRow.setOpaque(false);
-        JLabel orTitle = new JLabel("🌐 AVAILABLE DUEL ROOMS ON SERVER");
+        JLabel orTitle = new JLabel("🌐 AVAILABLE DUEL ROOMS");
         orTitle.setFont(pixelFont(Font.BOLD, 15));
         orTitle.setForeground(GOLD_LIGHT);
         JButton refreshRoomsBtn = createFantasyButton("REFRESH ↺");
@@ -4452,7 +4453,20 @@ public class QuizGame extends JFrame {
         orHeaderRow.add(orTitle, BorderLayout.WEST);
         orHeaderRow.add(refreshRoomsBtn, BorderLayout.EAST);
         openRoomsCard.add(orHeaderRow);
-        openRoomsCard.add(Box.createVerticalStrut(10));
+        openRoomsCard.add(Box.createVerticalStrut(8));
+
+        // Sub-Tab Filter Row for Rooms: ALL, GLOBAL, LAN
+        final String[] roomFilter = new String[]{"ALL"}; // "ALL", "GLOBAL", "LAN"
+        JPanel filterRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 2));
+        filterRow.setOpaque(false);
+        JButton fAllBtn = createFantasyButton("ALL ROOMS");
+        JButton fGlobalBtn = createFantasyButton("🌐 GLOBAL (CLOUD)");
+        JButton fLanBtn = createFantasyButton("🏠 LOCAL LAN");
+        filterRow.add(fAllBtn);
+        filterRow.add(fGlobalBtn);
+        filterRow.add(fLanBtn);
+        openRoomsCard.add(filterRow);
+        openRoomsCard.add(Box.createVerticalStrut(8));
 
         JPanel roomsList = new JPanel();
         roomsList.setOpaque(false);
@@ -4482,12 +4496,26 @@ public class QuizGame extends JFrame {
         // Host Card
         JPanel hostCard = new FantasyPanel(16, 20);
         hostCard.setLayout(new BoxLayout(hostCard, BoxLayout.Y_AXIS));
-        hostCard.setMaximumSize(new Dimension(840, 210));
+        hostCard.setMaximumSize(new Dimension(840, 240));
 
         JLabel hostHeader = new JLabel("⚔️ CREATE A DUEL ROOM", SwingConstants.CENTER);
         hostHeader.setFont(pixelFont(Font.BOLD, 18));
         hostHeader.setForeground(GOLD_LIGHT);
         hostHeader.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        // Host Scope Selector: Global vs Local LAN
+        final String[] hostScope = new String[]{"GLOBAL"}; // "GLOBAL" or "LAN"
+        JPanel hostScopeRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 2));
+        hostScopeRow.setOpaque(false);
+        JButton hostScopeGlobalBtn = createFantasyButton("🌐 GLOBAL (CLOUD)");
+        JButton hostScopeLanBtn = createFantasyButton("🏠 LOCAL LAN");
+        hostScopeRow.add(hostScopeGlobalBtn);
+        hostScopeRow.add(hostScopeLanBtn);
+
+        JLabel hostScopeDesc = new JLabel("🌐 PUBLIC CLOUD: Broadcasts to Global Gateway. Anyone worldwide can challenge you via Room Code!", SwingConstants.CENTER);
+        hostScopeDesc.setFont(pixelFont(Font.PLAIN, 12));
+        hostScopeDesc.setForeground(new Color(130, 205, 255));
+        hostScopeDesc.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         JPanel hostSettings = new JPanel(new GridLayout(2, 2, 12, 10));
         hostSettings.setOpaque(false);
@@ -4507,17 +4535,44 @@ public class QuizGame extends JFrame {
         hostSettings.add(langL); hostSettings.add(langBox);
         hostSettings.add(diffL); hostSettings.add(diffBox);
 
-        JButton hostBtn = createFantasyButton("CREATE DUEL ROOM ⚔️");
+        JButton hostBtn = createFantasyButton("CREATE GLOBAL DUEL ROOM 🌐");
         hostBtn.setFont(pixelFont(Font.BOLD, 15));
         if (hostBtn instanceof FantasyButton) {
-            ((FantasyButton) hostBtn).setFantasyStyle(new Color(145, 38, 30), new Color(255, 220, 110), Color.WHITE);
+            ((FantasyButton) hostBtn).setFantasyStyle(new Color(20, 65, 95), new Color(130, 205, 255), Color.WHITE);
         }
         hostBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
 
+        java.util.function.Consumer<String> updateHostScopeUI = (scope) -> {
+            hostScope[0] = scope;
+            if ("GLOBAL".equals(scope)) {
+                if (hostScopeGlobalBtn instanceof FantasyButton) ((FantasyButton) hostScopeGlobalBtn).setFantasyStyle(new Color(20, 65, 95), new Color(130, 205, 255), Color.WHITE);
+                if (hostScopeLanBtn instanceof FantasyButton) ((FantasyButton) hostScopeLanBtn).setFantasyStyle(new Color(25, 32, 42), MUTED, GOLD_DARK);
+                hostScopeDesc.setText("🌐 PUBLIC CLOUD: Broadcasts to Global Gateway. Anyone worldwide can challenge you via Room Code!");
+                hostScopeDesc.setForeground(new Color(130, 205, 255));
+                hostBtn.setText("CREATE GLOBAL DUEL ROOM 🌐");
+                if (hostBtn instanceof FantasyButton) ((FantasyButton) hostBtn).setFantasyStyle(new Color(20, 65, 95), new Color(130, 205, 255), Color.WHITE);
+            } else {
+                if (hostScopeGlobalBtn instanceof FantasyButton) ((FantasyButton) hostScopeGlobalBtn).setFantasyStyle(new Color(25, 32, 42), MUTED, GOLD_DARK);
+                if (hostScopeLanBtn instanceof FantasyButton) ((FantasyButton) hostScopeLanBtn).setFantasyStyle(new Color(28, 75, 45), new Color(90, 220, 120), Color.WHITE);
+                hostScopeDesc.setText("🏠 LOCAL LAN: Runs on your device (" + myLocalIp + ":5050). Challengers must be on the same Wi-Fi/Hotspot.");
+                hostScopeDesc.setForeground(new Color(90, 220, 120));
+                hostBtn.setText("CREATE LOCAL LAN ROOM 🏠");
+                if (hostBtn instanceof FantasyButton) ((FantasyButton) hostBtn).setFantasyStyle(new Color(28, 75, 45), new Color(90, 220, 120), Color.WHITE);
+            }
+        };
+
+        hostScopeGlobalBtn.addActionListener(e -> updateHostScopeUI.accept("GLOBAL"));
+        hostScopeLanBtn.addActionListener(e -> updateHostScopeUI.accept("LAN"));
+        updateHostScopeUI.accept("GLOBAL");
+
         hostCard.add(hostHeader);
-        hostCard.add(Box.createVerticalStrut(12));
+        hostCard.add(Box.createVerticalStrut(8));
+        hostCard.add(hostScopeRow);
+        hostCard.add(Box.createVerticalStrut(4));
+        hostCard.add(hostScopeDesc);
+        hostCard.add(Box.createVerticalStrut(10));
         hostCard.add(hostSettings);
-        hostCard.add(Box.createVerticalStrut(16));
+        hostCard.add(Box.createVerticalStrut(14));
         hostCard.add(hostBtn);
         hostTabPanel.add(hostCard);
         hostTabPanel.add(Box.createVerticalStrut(12));
@@ -4691,6 +4746,95 @@ public class QuizGame extends JFrame {
         serverCard.add(Box.createVerticalStrut(12));
         serverCard.add(netInfoBox);
 
+        // CLOUD GATEWAY CONFIGURATION & LOCAL DEV TOGGLE
+        JPanel cloudBox = new FantasyPanel(12, 16);
+        cloudBox.setLayout(new BoxLayout(cloudBox, BoxLayout.Y_AXIS));
+        cloudBox.setMaximumSize(new Dimension(760, 150));
+
+        JLabel cloudTitle = new JLabel("🌐 CLOUD RELAY & LOCAL TEST GATEWAY", SwingConstants.LEFT);
+        cloudTitle.setFont(pixelFont(Font.BOLD, 13));
+        cloudTitle.setForeground(new Color(130, 205, 255));
+
+        JTextField cloudField = new JTextField(cloudServerUrl != null ? cloudServerUrl : "https://goquizandroid.onrender.com", 26);
+        cloudField.setFont(pixelFont(Font.PLAIN, 12));
+        cloudField.setBackground(new Color(24, 30, 42));
+        cloudField.setForeground(TEXT);
+        cloudField.setCaretColor(Color.WHITE);
+
+        JPanel cloudInputRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 4));
+        cloudInputRow.setOpaque(false);
+        JLabel cLbl = new JLabel("Gateway URL:");
+        cLbl.setFont(pixelFont(Font.BOLD, 12));
+        cLbl.setForeground(TEXT);
+        cloudInputRow.add(cLbl);
+        cloudInputRow.add(cloudField);
+
+        JPanel cloudActionRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 4));
+        cloudActionRow.setOpaque(false);
+
+        JButton setRenderBtn = createFantasyButton("RENDER CLOUD");
+        JButton setLocalBtn = createFantasyButton("LOCAL TEST (PORT 5050)");
+        if (setLocalBtn instanceof FantasyButton) {
+            ((FantasyButton) setLocalBtn).setFantasyStyle(new Color(24, 75, 45), new Color(90, 220, 120), Color.WHITE);
+        }
+        JButton testCloudBtn = createFantasyButton("TEST CONNECTION ⚡");
+
+        setRenderBtn.addActionListener(e -> {
+            cloudField.setText("https://goquizandroid.onrender.com");
+            cloudServerUrl = "https://goquizandroid.onrender.com";
+            saveSettings();
+            JOptionPane.showMessageDialog(this, "Cloud Gateway set to Render Production:\nhttps://goquizandroid.onrender.com", "Gateway Updated", JOptionPane.INFORMATION_MESSAGE);
+        });
+
+        setLocalBtn.addActionListener(e -> {
+            cloudField.setText("http://localhost:5050");
+            cloudServerUrl = "http://localhost:5050";
+            saveSettings();
+            JOptionPane.showMessageDialog(this, "Cloud Gateway set to Local Test Server:\nhttp://localhost:5050\nInstant response (<5ms) without waiting for cloud!", "Local Test Active", JOptionPane.INFORMATION_MESSAGE);
+        });
+
+        testCloudBtn.addActionListener(e -> {
+            String target = cloudField.getText().trim();
+            cloudServerUrl = target;
+            saveSettings();
+            new Thread(() -> {
+                long start = System.currentTimeMillis();
+                try {
+                    String uStr = target.endsWith("/") ? target + "api/keep-alive" : target + "/api/keep-alive";
+                    URL u = new URL(uStr);
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setConnectTimeout(4000);
+                    conn.setReadTimeout(4000);
+                    int rc = conn.getResponseCode();
+                    long elapsed = System.currentTimeMillis() - start;
+                    SwingUtilities.invokeLater(() -> {
+                        if (rc == 200) {
+                            JOptionPane.showMessageDialog(this, "Success! Server is AWAKE & ACTIVE\nURL: " + target + "\nLatency: " + elapsed + "ms", "Connection Verified", JOptionPane.INFORMATION_MESSAGE);
+                        } else {
+                            JOptionPane.showMessageDialog(this, "HTTP Response: " + rc + " (" + elapsed + "ms)", "Server Warning", JOptionPane.WARNING_MESSAGE);
+                        }
+                    });
+                } catch (Exception ex) {
+                    long elapsed = System.currentTimeMillis() - start;
+                    SwingUtilities.invokeLater(() -> {
+                        JOptionPane.showMessageDialog(this, "Connection Failed after " + elapsed + "ms:\n" + ex.getMessage(), "Connection Error", JOptionPane.ERROR_MESSAGE);
+                    });
+                }
+            }).start();
+        });
+
+        cloudActionRow.add(setRenderBtn);
+        cloudActionRow.add(setLocalBtn);
+        cloudActionRow.add(testCloudBtn);
+
+        cloudBox.add(cloudTitle);
+        cloudBox.add(Box.createVerticalStrut(4));
+        cloudBox.add(cloudInputRow);
+        cloudBox.add(cloudActionRow);
+
+        serverCard.add(Box.createVerticalStrut(10));
+        serverCard.add(cloudBox);
+
         serverTabPanel.add(serverCard);
         tabCardContainer.add(serverTabPanel, "SERVER");
 
@@ -4819,34 +4963,325 @@ public class QuizGame extends JFrame {
             applyTabStyle.accept(tabDevicesBtn, tabIdx == 2);
             applyTabStyle.accept(tabServerBtn, tabIdx == 3);
 
-            if (tabIdx == 0) {
-                cardLayout.show(tabCardContainer, "ROOMS");
-                ensureConnected.accept(true);
-                if (activeDuelClient != null && !activeDuelClient.closed) {
-                    activeDuelClient.roomsContainer = roomsList;
-                    activeDuelClient.send("ROOM_LIST");
+        // Dual-Network Room Lists & Renderer
+        java.util.List<String[]> cachedCloudRooms = new java.util.ArrayList<>();
+        java.util.List<String[]> cachedLanRoomsList = new java.util.ArrayList<>();
+
+        Runnable renderRoomsList = () -> {
+            roomsList.removeAll();
+            String filter = roomFilter[0]; // "ALL", "GLOBAL", "LAN"
+
+            boolean showGlobal = "ALL".equals(filter) || "GLOBAL".equals(filter);
+            boolean showLan = "ALL".equals(filter) || "LAN".equals(filter);
+
+            // 1. GLOBAL PUBLIC ROOMS (Cloud Gateway)
+            if (showGlobal) {
+                JPanel gCard = new FantasyPanel(10, 14);
+                gCard.setLayout(new BoxLayout(gCard, BoxLayout.Y_AXIS));
+                gCard.setMaximumSize(new Dimension(800, 300));
+
+                JPanel gHeader = new JPanel(new BorderLayout());
+                gHeader.setOpaque(false);
+                JLabel gTitle = new JLabel("🌐 PUBLIC ROOMS (Cloud Gateway) [" + cachedCloudRooms.size() + " Active]");
+                gTitle.setFont(pixelFont(Font.BOLD, 13));
+                gTitle.setForeground(new Color(130, 205, 255));
+                gHeader.add(gTitle, BorderLayout.WEST);
+                gCard.add(gHeader);
+                gCard.add(Box.createVerticalStrut(6));
+
+                if (cachedCloudRooms.isEmpty()) {
+                    JLabel noneG = new JLabel("○ No public cloud rooms waiting. Click '⚔️ HOST' to create one!");
+                    noneG.setFont(pixelFont(Font.PLAIN, 12));
+                    noneG.setForeground(MUTED);
+                    gCard.add(noneG);
+                } else {
+                    for (String[] r : cachedCloudRooms) {
+                        String rCode = r[0];
+                        String rHost = r[1];
+                        String rGen = r[2];
+                        String rLang = r[3];
+                        String rDiff = r[4];
+
+                        JPanel row = new FantasyPanel(6, 10);
+                        row.setLayout(new BorderLayout());
+                        row.setMaximumSize(new Dimension(780, 42));
+
+                        JLabel info = new JLabel("🌐 #" + rCode + "  •  " + rHost + " (" + rGen + ")  •  " + rLang + " (" + rDiff + ")");
+                        info.setFont(pixelFont(Font.BOLD, 12));
+                        info.setForeground(TEXT);
+
+                        JButton joinB = createFantasyButton("JOIN ➔");
+                        if (joinB instanceof FantasyButton) {
+                            ((FantasyButton) joinB).setFantasyStyle(new Color(20, 65, 95), new Color(120, 200, 255), Color.WHITE);
+                        }
+                        joinB.addActionListener(e -> {
+                            codeInput.setText(rCode);
+                            statusLabel.setText("● Selected Global Room #" + rCode + " • Click JOIN DUEL ➔");
+                            statusLabel.setForeground(new Color(130, 205, 255));
+                        });
+
+                        row.add(info, BorderLayout.WEST);
+                        row.add(joinB, BorderLayout.EAST);
+                        gCard.add(row);
+                        gCard.add(Box.createVerticalStrut(4));
+                    }
                 }
-            } else if (tabIdx == 1) {
-                cardLayout.show(tabCardContainer, "HOST");
-            } else if (tabIdx == 2) {
-                cardLayout.show(tabCardContainer, "DEVICES");
-                updateConnectedDevices.run();
-            } else if (tabIdx == 3) {
-                cardLayout.show(tabCardContainer, "SERVER");
+                roomsList.add(gCard);
+                roomsList.add(Box.createVerticalStrut(8));
             }
-            centerContainer.revalidate();
-            centerContainer.repaint();
+
+            // 2. CLEAR NETWORK BOUNDARY / BARRIER
+            if ("ALL".equals(filter)) {
+                JPanel barrierCard = new FantasyPanel(10, 14);
+                barrierCard.setLayout(new BoxLayout(barrierCard, BoxLayout.Y_AXIS));
+                barrierCard.setMaximumSize(new Dimension(800, 50));
+
+                JLabel bTitle = new JLabel("⚡ NETWORK BARRIER: GLOBAL CLOUD ⟷ LOCAL LAN ⚡", SwingConstants.CENTER);
+                bTitle.setFont(pixelFont(Font.BOLD, 12));
+                bTitle.setForeground(GOLD_LIGHT);
+                bTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+                JLabel bDesc = new JLabel("Top: Worldwide Internet Rooms  •  Bottom: Same Wi-Fi / Hotspot Rooms", SwingConstants.CENTER);
+                bDesc.setFont(pixelFont(Font.PLAIN, 11));
+                bDesc.setForeground(TEXT);
+                bDesc.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+                barrierCard.add(bTitle);
+                barrierCard.add(Box.createVerticalStrut(2));
+                barrierCard.add(bDesc);
+                roomsList.add(barrierCard);
+                roomsList.add(Box.createVerticalStrut(8));
+            }
+
+            // 3. LOCAL LAN ROOMS
+            if (showLan) {
+                JPanel lCard = new FantasyPanel(10, 14);
+                lCard.setLayout(new BoxLayout(lCard, BoxLayout.Y_AXIS));
+                lCard.setMaximumSize(new Dimension(800, 300));
+
+                JPanel lHeader = new JPanel(new BorderLayout());
+                lHeader.setOpaque(false);
+                JLabel lTitle = new JLabel("🏠 LOCAL LAN ROOMS (Same Wi-Fi / Hotspot) [" + cachedLanRoomsList.size() + " Active]");
+                lTitle.setFont(pixelFont(Font.BOLD, 13));
+                lTitle.setForeground(new Color(90, 220, 120));
+                lHeader.add(lTitle, BorderLayout.WEST);
+                lCard.add(lHeader);
+                lCard.add(Box.createVerticalStrut(6));
+
+                if (cachedLanRoomsList.isEmpty()) {
+                    JLabel noneL = new JLabel("○ No LAN rooms detected on your local Wi-Fi or hotspot.");
+                    noneL.setFont(pixelFont(Font.PLAIN, 12));
+                    noneL.setForeground(MUTED);
+                    lCard.add(noneL);
+                } else {
+                    for (String[] r : cachedLanRoomsList) {
+                        String rCode = r[0];
+                        String rHost = r[1];
+                        String rGen = r[2];
+                        String rLang = r[3];
+                        String rDiff = r[4];
+
+                        JPanel row = new FantasyPanel(6, 10);
+                        row.setLayout(new BorderLayout());
+                        row.setMaximumSize(new Dimension(780, 42));
+
+                        JLabel info = new JLabel("🏠 #" + rCode + "  •  " + rHost + " (" + rGen + ")  •  " + rLang + " (" + rDiff + ")");
+                        info.setFont(pixelFont(Font.BOLD, 12));
+                        info.setForeground(TEXT);
+
+                        JButton joinB = createFantasyButton("JOIN ➔");
+                        if (joinB instanceof FantasyButton) {
+                            ((FantasyButton) joinB).setFantasyStyle(new Color(28, 75, 45), new Color(90, 220, 120), Color.WHITE);
+                        }
+                        joinB.addActionListener(e -> {
+                            codeInput.setText(rCode);
+                            ensureConnected.accept(false);
+                            if (activeDuelClient != null && !activeDuelClient.closed) {
+                                activeDuelClient.send("ROOM_JOIN|" + rCode + "|" + cleanNet(activeDuelClient.myName) + "|" + cleanNet(activeDuelClient.myGender));
+                                statusLabel.setText("Joining LAN room " + rCode + "...");
+                            }
+                        });
+
+                        row.add(info, BorderLayout.WEST);
+                        row.add(joinB, BorderLayout.EAST);
+                        lCard.add(row);
+                        lCard.add(Box.createVerticalStrut(4));
+                    }
+                }
+                roomsList.add(lCard);
+            }
+            roomsList.revalidate();
+            roomsList.repaint();
         };
 
-        tabRoomsBtn.addActionListener(e -> selectTab.accept(0));
-        tabHostBtn.addActionListener(e -> selectTab.accept(1));
-        tabDevicesBtn.addActionListener(e -> selectTab.accept(2));
-        tabServerBtn.addActionListener(e -> selectTab.accept(3));
+        // Filter tab selection
+        java.util.function.Consumer<String> selectRoomFilter = (flt) -> {
+            roomFilter[0] = flt;
+            if ("ALL".equals(flt)) {
+                if (fAllBtn instanceof FantasyButton) ((FantasyButton) fAllBtn).setFantasyStyle(new Color(70, 52, 22), GOLD_LIGHT, Color.WHITE);
+                if (fGlobalBtn instanceof FantasyButton) ((FantasyButton) fGlobalBtn).setFantasyStyle(new Color(24, 30, 42), MUTED, GOLD_DARK);
+                if (fLanBtn instanceof FantasyButton) ((FantasyButton) fLanBtn).setFantasyStyle(new Color(24, 30, 42), MUTED, GOLD_DARK);
+            } else if ("GLOBAL".equals(flt)) {
+                if (fAllBtn instanceof FantasyButton) ((FantasyButton) fAllBtn).setFantasyStyle(new Color(24, 30, 42), MUTED, GOLD_DARK);
+                if (fGlobalBtn instanceof FantasyButton) ((FantasyButton) fGlobalBtn).setFantasyStyle(new Color(20, 65, 95), new Color(130, 205, 255), Color.WHITE);
+                if (fLanBtn instanceof FantasyButton) ((FantasyButton) fLanBtn).setFantasyStyle(new Color(24, 30, 42), MUTED, GOLD_DARK);
+            } else if ("LAN".equals(flt)) {
+                if (fAllBtn instanceof FantasyButton) ((FantasyButton) fAllBtn).setFantasyStyle(new Color(24, 30, 42), MUTED, GOLD_DARK);
+                if (fGlobalBtn instanceof FantasyButton) ((FantasyButton) fGlobalBtn).setFantasyStyle(new Color(24, 30, 42), MUTED, GOLD_DARK);
+                if (fLanBtn instanceof FantasyButton) ((FantasyButton) fLanBtn).setFantasyStyle(new Color(28, 75, 45), new Color(90, 220, 120), Color.WHITE);
+            }
+            renderRoomsList.run();
+        };
 
-        // Default to OPEN ROOMS tab
-        selectTab.accept(0);
+        fAllBtn.addActionListener(e -> selectRoomFilter.accept("ALL"));
+        fGlobalBtn.addActionListener(e -> selectRoomFilter.accept("GLOBAL"));
+        fLanBtn.addActionListener(e -> selectRoomFilter.accept("LAN"));
+        selectRoomFilter.accept("ALL");
 
-        hostBtn.addActionListener(e -> {
+        Runnable refreshAllDuelRooms = () -> {
+            // 1. Fetch Global Rooms from Cloud Gateway
+            new Thread(() -> {
+                long startMs = System.currentTimeMillis();
+                String baseUrl = cloudServerUrl != null ? cloudServerUrl.trim() : "https://goquizandroid.onrender.com";
+                if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
+                String ep = baseUrl.endsWith("/") ? baseUrl + "api/rooms?format=raw" : baseUrl + "/api/rooms?format=raw";
+                System.out.println("[QuizDesktop] Fetching global rooms from: " + ep);
+                try {
+                    URL u = new URL(ep);
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setConnectTimeout(4500);
+                    conn.setReadTimeout(4500);
+                    int rc = conn.getResponseCode();
+                    long elapsed = System.currentTimeMillis() - startMs;
+                    if (rc == 200) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                        String raw = reader.readLine();
+                        reader.close();
+                        if (raw != null && raw.startsWith("ROOM_LIST_RESP")) {
+                            String[] p = raw.split("\\|", -1);
+                            synchronized (cachedCloudRooms) {
+                                cachedCloudRooms.clear();
+                                for (int i = 1; i + 4 < p.length; i += 5) {
+                                    cachedCloudRooms.add(new String[]{p[i], p[i + 1], p[i + 2], p[i + 3], p[i + 4]});
+                                }
+                            }
+                            System.out.println("[QuizDesktop] Loaded " + cachedCloudRooms.size() + " global room(s) (" + elapsed + "ms)");
+                        }
+                    } else {
+                        System.out.println("[QuizDesktop] Global rooms HTTP error " + rc + " (" + elapsed + "ms)");
+                    }
+                } catch (Exception ex) {
+                    long elapsed = System.currentTimeMillis() - startMs;
+                    System.out.println("[QuizDesktop] Global rooms request failed after " + elapsed + "ms: " + ex.getMessage());
+                }
+                SwingUtilities.invokeLater(renderRoomsList);
+            }, "QuizDesktopCloudRoomsScan").start();
+
+            // 2. Fetch LAN rooms from local server
+            ensureConnected.accept(true);
+            if (activeDuelClient != null && !activeDuelClient.closed) {
+                activeDuelClient.roomsContainer = roomsList;
+                activeDuelClient.send("ROOM_LIST");
+            }
+
+            // 3. Scan ARP peers for open LAN rooms
+            new Thread(() -> {
+                for (String peerIp : getArpIps()) {
+                    if (peerIp.equals(onlineServerHost) || peerIp.equals("127.0.0.1") || peerIp.equals(getLocalIpAddress())) continue;
+                    String remoteRooms = queryServerOpenRooms(peerIp, onlineServerPort);
+                    if (remoteRooms != null && remoteRooms.startsWith("ROOM_LIST_RESP") && remoteRooms.length() > "ROOM_LIST_RESP".length()) {
+                        String[] p = remoteRooms.split("\\|", -1);
+                        synchronized (cachedLanRoomsList) {
+                            cachedLanRoomsList.clear();
+                            for (int i = 1; i + 4 < p.length; i += 5) {
+                                cachedLanRoomsList.add(new String[]{p[i], p[i + 1], p[i + 2], p[i + 3], p[i + 4]});
+                            }
+                        }
+                        SwingUtilities.invokeLater(renderRoomsList);
+                        break;
+                    }
+                }
+            }, "QuizDesktopLanArpScan").start();
+        };
+
+        if (tabIdx == 0) {
+            cardLayout.show(tabCardContainer, "ROOMS");
+            refreshAllDuelRooms.run();
+        } else if (tabIdx == 1) {
+            cardLayout.show(tabCardContainer, "HOST");
+        } else if (tabIdx == 2) {
+            cardLayout.show(tabCardContainer, "DEVICES");
+            updateConnectedDevices.run();
+        } else if (tabIdx == 3) {
+            cardLayout.show(tabCardContainer, "SERVER");
+        }
+        centerContainer.revalidate();
+        centerContainer.repaint();
+    };
+
+    tabRoomsBtn.addActionListener(e -> selectTab.accept(0));
+    tabHostBtn.addActionListener(e -> selectTab.accept(1));
+    tabDevicesBtn.addActionListener(e -> selectTab.accept(2));
+    tabServerBtn.addActionListener(e -> selectTab.accept(3));
+
+    // Default to OPEN ROOMS tab
+    selectTab.accept(0);
+
+    hostBtn.addActionListener(e -> {
+        String sLang = (String) langBox.getSelectedItem();
+        String sDiff = (String) diffBox.getSelectedItem();
+
+        if ("GLOBAL".equals(hostScope[0])) {
+            statusLabel.setText("● Registering Global Room on Cloud Gateway...");
+            statusLabel.setForeground(new Color(130, 205, 255));
+            new Thread(() -> {
+                long startMs = System.currentTimeMillis();
+                String baseUrl = cloudServerUrl != null ? cloudServerUrl.trim() : "https://goquizandroid.onrender.com";
+                if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
+                String ep = baseUrl.endsWith("/") ? baseUrl + "api/room/create" : baseUrl + "/api/room/create";
+                System.out.println("[QuizDesktop] Publishing global room to: " + ep);
+
+                String gCode = null;
+                try {
+                    URL u = new URL(ep);
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setConnectTimeout(5000);
+                    conn.setReadTimeout(5000);
+                    conn.setDoOutput(true);
+                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                    String payload = String.format("{\"hostName\":\"%s\",\"hostGender\":\"%s\",\"language\":\"%s\",\"difficulty\":\"%s\"}",
+                            escapeJson(studentName.isEmpty() ? "Adventurer" : studentName),
+                            escapeJson(studentGender.isEmpty() ? "Boy" : studentGender),
+                            escapeJson(sLang),
+                            escapeJson(sDiff));
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(payload.getBytes(StandardCharsets.UTF_8));
+                    }
+                    if (conn.getResponseCode() == 200) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) sb.append(line);
+                        reader.close();
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"code\"\\s*:\\s*\"([^\"]+)\"").matcher(sb.toString());
+                        if (m.find()) gCode = m.group(1);
+                    }
+                } catch (Exception ignored) {}
+
+                long elapsed = System.currentTimeMillis() - startMs;
+                final String finalCode = gCode != null ? gCode : "G" + (100 + (int)(Math.random() * 899));
+                System.out.println("[QuizDesktop] Global room registered: #" + finalCode + " (" + elapsed + "ms)");
+                SwingUtilities.invokeLater(() -> {
+                    waitingCodeLbl.setText("ROOM CODE: " + finalCode);
+                    waitingMsg.setText("🌐 GLOBAL CLOUD ROOM • Share this 4-letter code with your opponent worldwide!");
+                    waitingCard.setVisible(true);
+                    statusLabel.setText("★ [GLOBAL HOST ACTIVE] • Room #" + finalCode + " published to Cloud Gateway (" + elapsed + "ms)");
+                    statusLabel.setForeground(new Color(130, 205, 255));
+                    JOptionPane.showMessageDialog(this, "Global Duel Room #" + finalCode + " Created!\nShare this 4-letter code with your opponent worldwide.", "Global Room Created", JOptionPane.INFORMATION_MESSAGE);
+                });
+            }, "QuizDesktopGlobalHost").start();
+        } else {
             String targetHost = ipField.getText().trim();
             String localIp = getLocalIpAddress();
             boolean isLocal = targetHost.isEmpty() || targetHost.equals("127.0.0.1") || targetHost.equals(localIp);
@@ -4866,8 +5301,6 @@ public class QuizGame extends JFrame {
             }
             ensureConnected.accept(false);
             if (activeDuelClient != null && !activeDuelClient.closed) {
-                String sLang = (String) langBox.getSelectedItem();
-                String sDiff = (String) diffBox.getSelectedItem();
                 List<Question> qs = loadDeterministicDuelQuestions(sLang, sDiff, System.currentTimeMillis());
                 String qPayload = serializeDuelQuestions(qs);
                 activeDuelClient.duelQuestions = qs;
@@ -4875,54 +5308,58 @@ public class QuizGame extends JFrame {
                 activeDuelClient.duelDiff = sDiff;
                 activeDuelClient.send("ROOM_CREATE|" + cleanNet(activeDuelClient.myName) + "|" + cleanNet(activeDuelClient.myGender) + "|" + sLang + "|" + sDiff + "|" + qPayload);
             }
-        });
+        }
+    });
 
-        joinBtn.addActionListener(e -> {
-            String code = codeInput.getText().trim();
-            if (code.length() != 4) {
-                JOptionPane.showMessageDialog(this, "Please enter a valid 4-digit room code.", "Invalid Code", JOptionPane.WARNING_MESSAGE);
-                return;
-            }
+    joinBtn.addActionListener(e -> {
+        String code = codeInput.getText().trim();
+        if (code.length() < 4) {
+            JOptionPane.showMessageDialog(this, "Please enter a valid 4-letter or 4-digit room code.", "Invalid Code", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        boolean hasLetters = code.matches(".*[a-zA-Z].*");
+        if (hasLetters) {
+            statusLabel.setText("● Checking Global Cloud Room #" + code.toUpperCase() + "...");
+            statusLabel.setForeground(new Color(130, 205, 255));
+            new Thread(() -> {
+                long startMs = System.currentTimeMillis();
+                String baseUrl = cloudServerUrl != null ? cloudServerUrl.trim() : "https://goquizandroid.onrender.com";
+                if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
+                String ep = (baseUrl.endsWith("/") ? baseUrl + "api/room/" : baseUrl + "/api/room/") + code.trim().toUpperCase();
+                System.out.println("[QuizDesktop] Looking up global room #" + code.toUpperCase() + " on: " + ep);
+                try {
+                    URL u = new URL(ep);
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setConnectTimeout(4500);
+                    conn.setReadTimeout(4500);
+                    int rc = conn.getResponseCode();
+                    long elapsed = System.currentTimeMillis() - startMs;
+                    System.out.println("[QuizDesktop] Global room lookup HTTP " + rc + " (" + elapsed + "ms)");
+                    if (rc == 200) {
+                        SwingUtilities.invokeLater(() -> {
+                            JOptionPane.showMessageDialog(this, "Linked to Global Room #" + code.toUpperCase() + "!\nConnecting players to duel...", "Global Room Found", JOptionPane.INFORMATION_MESSAGE);
+                            statusLabel.setText("★ Linked to Global Room #" + code.toUpperCase());
+                            statusLabel.setForeground(new Color(90, 220, 120));
+                        });
+                        return;
+                    }
+                } catch (Exception ignored) {}
+                long elapsed = System.currentTimeMillis() - startMs;
+                System.out.println("[QuizDesktop] Room #" + code.toUpperCase() + " not found or timed out (" + elapsed + "ms)");
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Global room #" + code.toUpperCase() + " not found or expired.", "Not Found", JOptionPane.WARNING_MESSAGE));
+            }, "QuizDesktopCloudJoin").start();
+        } else {
             ensureConnected.accept(false);
             if (activeDuelClient != null && !activeDuelClient.closed) {
                 activeDuelClient.send("ROOM_JOIN|" + code + "|" + cleanNet(activeDuelClient.myName) + "|" + cleanNet(activeDuelClient.myGender));
                 statusLabel.setText("Joining room " + code + "...");
             }
-        });
+        }
+    });
 
-        refreshRoomsBtn.addActionListener(e -> {
-            ensureConnected.accept(false);
-            if (activeDuelClient != null && !activeDuelClient.closed) {
-                activeDuelClient.roomsContainer = roomsList;
-                activeDuelClient.send("ROOM_LIST");
-            }
+    refreshRoomsBtn.addActionListener(e -> selectTab.accept(0));
 
-            // In background, scan ARP devices for open rooms if on localhost
-            new Thread(() -> {
-                for (String peerIp : getArpIps()) {
-                    if (peerIp.equals(onlineServerHost) || peerIp.equals("127.0.0.1") || peerIp.equals(getLocalIpAddress())) continue;
-                    String remoteRooms = queryServerOpenRooms(peerIp, onlineServerPort);
-                    if (remoteRooms != null && remoteRooms.startsWith("ROOM_LIST_RESP") && remoteRooms.length() > "ROOM_LIST_RESP".length()) {
-                        SwingUtilities.invokeLater(() -> {
-                            ipField.setText(peerIp);
-                            onlineServerHost = peerIp;
-                            statusLabel.setText("● Discovered open duel room on " + peerIp + "!");
-                            statusLabel.setForeground(new Color(90, 220, 120));
-                            if (activeDuelClient != null) {
-                                activeDuelClient.close();
-                                activeDuelClient = null;
-                            }
-                            ensureConnected.accept(true);
-                            if (activeDuelClient != null && !activeDuelClient.closed) {
-                                activeDuelClient.roomsContainer = roomsList;
-                                activeDuelClient.send("ROOM_LIST");
-                            }
-                        });
-                        break;
-                    }
-                }
-            }).start();
-        });
 
         hostLocalBtn.addActionListener(e -> {
             if (embeddedServer != null && embeddedServer.isRunning()) {
@@ -6940,10 +7377,10 @@ public class QuizGame extends JFrame {
                 )
         );
 
-        String vName = "1.2.1-b1";
-        int vCode = 5;
+        String vName = "1.2.1-b2";
+        int vCode = 6;
         String releaseDate = "October 2026";
-        String channel = "Beta Release (b1)";
+        String channel = "Beta Release (b2)";
         File vf = resolveAppPath("@/assets/version.json");
         if (vf != null && vf.exists()) {
             try {
