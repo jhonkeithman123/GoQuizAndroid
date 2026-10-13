@@ -1,9 +1,9 @@
 {
   "appName": "GoQuiz Adventure",
-  "versionName": "1.2.1",
-  "versionCode": 4,
+  "versionName": "1.2.1-b1",
+  "versionCode": 5,
   "releaseDate": "October 2026",
-  "channel": "Production Release",
+  "channel": "Beta Release (b1)",
   "engine": "Cross-Platform Java 17",
   "platforms": {
     "android": {

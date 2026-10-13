@@ -3355,10 +3355,10 @@ public class MainActivity extends Activity {
         addViewToVerticalLayout(p, createStyledTextView("Game Information & Version Control", 13));
         addVerticalSpacing(p, 10);
 
-        String appVersionName = "1.2.0";
-        int appVersionCode = 3;
+        String appVersionName = "1.2.1-b1";
+        int appVersionCode = 5;
         String releaseDate = "October 2026";
-        String channel = "Production Release";
+        String channel = "Beta Release (b1)";
         try {
             java.io.InputStream is = getAssets().open("version.json");
             byte[] buf = new byte[is.available()];

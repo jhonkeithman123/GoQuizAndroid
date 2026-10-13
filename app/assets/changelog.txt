@@ -1,3 +1,10 @@
+[v1.2.1-b1] - Global Online Cloud Leaderboard Beta
+• Added Dual-Mode Leaderboard: Global Online (Cloud) and Local LAN (Offline Wi-Fi/Hotspot).
+• Global high scores synced in real-time with Render Cloud Server and Supabase PostgreSQL.
+• Interactive top tab switcher to toggle between Global Cloud and Local LAN rankings.
+• Diagnostic cloud latency test (PING ⚡) and automated anti-sleep keep-alive diagnostics.
+• Automatic background score upload to cloud upon level completion.
+
 [v1.2.1] - Desktop Launcher Compatibility & Zero-Dependency Update
 • Bundled self-contained Java 17 portable runtime (jre) into the Windows release bundle for zero-dependency execution.
 • Added runtime protection against "Java Virtual Machine Launcher" errors on PCs running older Java 8 runtimes.
