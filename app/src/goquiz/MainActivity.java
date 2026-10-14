@@ -971,16 +971,24 @@ public class MainActivity extends Activity {
     private SensorEventListener sensorListener;
     private boolean isDriftRunning = false;
 
-    // Secret DB Menu Sensor & Key Tracking (Shake + Vol Up & Down)
+    // Secret DB Menu Sensor & Key Tracking (Shake + Vol Up & Down + Multi-touch + Sequences)
     private Sensor accelerometerSensor;
     private SensorEventListener shakeSensorListener;
     private float lastShakeX = 0, lastShakeY = 0, lastShakeZ = 0;
-    private long lastShakeTime = 0;
+    private int consecutiveShakeCount = 0;
+    private long lastShakeSpikeTime = 0;
+
     private boolean isVolumeUpPressed = false;
     private boolean isVolumeDownPressed = false;
+    private long lastVolumeUpTime = 0;
+    private long lastVolumeDownTime = 0;
+    private int volumeSequenceCount = 0;
+    private long lastVolumeSequenceTime = 0;
+
     private long lastSecretPromptTime = 0;
     private int secretTapCount = 0;
     private long lastSecretTapTime = 0;
+    private long threeFingerStartTime = 0;
 
     private final Choreographer.FrameCallback driftCallback = new Choreographer.FrameCallback() {
         @Override
@@ -1052,23 +1060,51 @@ public class MainActivity extends Activity {
                             float x = event.values[0];
                             float y = event.values[1];
                             float z = event.values[2];
-                            long curTime = System.currentTimeMillis();
-                            if ((curTime - lastShakeTime) > 100) {
-                                long diffTime = (curTime - lastShakeTime);
-                                lastShakeTime = curTime;
-                                float speed = Math.abs(x + y + z - lastShakeX - lastShakeY - lastShakeZ) / diffTime * 10000;
-                                if (speed > 800) {
-                                    checkSecretMenuTrigger();
+                            long curTime = SystemClock.uptimeMillis();
+
+                            // Proper Euclidean G-force
+                            float gX = x / SensorManager.GRAVITY_EARTH;
+                            float gY = y / SensorManager.GRAVITY_EARTH;
+                            float gZ = z / SensorManager.GRAVITY_EARTH;
+                            float gForce = (float) Math.sqrt(gX * gX + gY * gY + gZ * gZ);
+
+                            float deltaX = Math.abs(x - lastShakeX);
+                            float deltaY = Math.abs(y - lastShakeY);
+                            float deltaZ = Math.abs(z - lastShakeZ);
+                            lastShakeX = x;
+                            lastShakeY = y;
+                            lastShakeZ = z;
+
+                            // Firm physical shake threshold
+                            boolean isShakeSpike = (gForce > 1.80f) || (deltaX > 8.0f || deltaY > 8.0f || deltaZ > 8.0f);
+
+                            if (isShakeSpike) {
+                                if (curTime - lastShakeSpikeTime > 180) {
+                                    lastShakeSpikeTime = curTime;
+                                    consecutiveShakeCount++;
                                 }
-                                lastShakeX = x;
-                                lastShakeY = y;
-                                lastShakeZ = z;
+
+                                // Trigger Option 1: Shaking while Volume buttons are held or recently rocked
+                                if (isVolumeComboActive()) {
+                                    triggerSecretMenu("Shake + Volume");
+                                    return;
+                                }
+
+                                // Trigger Option 2: 3 firm shakes in a row within 1.5 seconds (shake-only shortcut)
+                                if (consecutiveShakeCount >= 3) {
+                                    consecutiveShakeCount = 0;
+                                    triggerSecretMenu("Triple Shake");
+                                    return;
+                                }
+                            } else if (curTime - lastShakeSpikeTime > 1500) {
+                                consecutiveShakeCount = 0;
                             }
                         }
 
                         @Override
                         public void onAccuracyChanged(Sensor sensor, int accuracy) {}
                     };
+                    sensorManager.registerListener(shakeSensorListener, accelerometerSensor, SensorManager.SENSOR_DELAY_UI);
                 }
             }
         } catch (Throwable ignored) {}
@@ -1086,30 +1122,105 @@ public class MainActivity extends Activity {
         Choreographer.getInstance().removeFrameCallback(driftCallback);
     }
 
-    private void checkSecretMenuTrigger() {
-        if (isVolumeUpPressed && isVolumeDownPressed) {
-            long now = System.currentTimeMillis();
-            if (now - lastSecretPromptTime > 2500) {
-                lastSecretPromptTime = now;
-                runOnUiThread(this::showSecretPasswordPrompt);
-            }
+    private boolean isVolumeComboActive() {
+        long now = SystemClock.uptimeMillis();
+        // 1. Both currently held
+        if (isVolumeUpPressed && isVolumeDownPressed) return true;
+        // 2. Either volume key is currently held down
+        if (isVolumeUpPressed || isVolumeDownPressed) return true;
+        // 3. User pressed both volume buttons within last 3 seconds
+        if (Math.abs(lastVolumeUpTime - lastVolumeDownTime) < 3000 && (now - Math.max(lastVolumeUpTime, lastVolumeDownTime) < 3000)) {
+            return true;
         }
+        return false;
+    }
+
+    private synchronized void triggerSecretMenu(String source) {
+        long now = SystemClock.uptimeMillis();
+        if (now - lastSecretPromptTime < 2000) return;
+        lastSecretPromptTime = now;
+
+        // Vibrate for physical feedback so user knows trigger succeeded
+        try {
+            Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            if (v != null && v.hasVibrator()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    v.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE));
+                } else {
+                    v.vibrate(80);
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        runOnUiThread(this::showSecretPasswordPrompt);
     }
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         int action = event.getAction();
         int keyCode = event.getKeyCode();
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-            isVolumeUpPressed = (action == KeyEvent.ACTION_DOWN);
-            if (action == KeyEvent.ACTION_DOWN) checkSecretMenuTrigger();
-            if (isVolumeUpPressed && isVolumeDownPressed) return true;
-        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            isVolumeDownPressed = (action == KeyEvent.ACTION_DOWN);
-            if (action == KeyEvent.ACTION_DOWN) checkSecretMenuTrigger();
-            if (isVolumeUpPressed && isVolumeDownPressed) return true;
+        long now = SystemClock.uptimeMillis();
+
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (action == KeyEvent.ACTION_DOWN) {
+                if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                    isVolumeUpPressed = true;
+                    lastVolumeUpTime = now;
+                } else {
+                    isVolumeDownPressed = true;
+                    lastVolumeDownTime = now;
+                }
+
+                // Volume click sequence (4 clicks within 2.5 seconds)
+                if (now - lastVolumeSequenceTime > 2500) {
+                    volumeSequenceCount = 0;
+                }
+                lastVolumeSequenceTime = now;
+                volumeSequenceCount++;
+
+                if (volumeSequenceCount >= 4) {
+                    volumeSequenceCount = 0;
+                    triggerSecretMenu("Volume Sequence (4 Clicks)");
+                    return true;
+                }
+
+                // If both physically pressed at once
+                if (isVolumeUpPressed && isVolumeDownPressed) {
+                    triggerSecretMenu("Volume Up + Down Pressed");
+                    return true;
+                }
+            } else if (action == KeyEvent.ACTION_UP) {
+                if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                    isVolumeUpPressed = false;
+                } else {
+                    isVolumeDownPressed = false;
+                }
+            }
         }
         return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        lastTouchInteractionTime = SystemClock.uptimeMillis();
+        int action = ev.getActionMasked();
+        int pointerCount = ev.getPointerCount();
+
+        // 3-finger touch hold secret gesture (hold 3 fingers for 0.6 seconds)
+        if (pointerCount >= 3) {
+            if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_DOWN) {
+                threeFingerStartTime = SystemClock.uptimeMillis();
+            } else if (action == MotionEvent.ACTION_MOVE) {
+                if (threeFingerStartTime > 0 && (SystemClock.uptimeMillis() - threeFingerStartTime) > 600) {
+                    threeFingerStartTime = 0;
+                    triggerSecretMenu("3-Finger Touch Hold");
+                }
+            }
+        } else {
+            threeFingerStartTime = 0;
+        }
+
+        return super.dispatchTouchEvent(ev);
     }
 
     @Override
@@ -1127,12 +1238,18 @@ public class MainActivity extends Activity {
         lastTouchInteractionTime = SystemClock.uptimeMillis();
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             isVolumeUpPressed = true;
-            checkSecretMenuTrigger();
-            if (isVolumeUpPressed && isVolumeDownPressed) return true;
+            lastVolumeUpTime = SystemClock.uptimeMillis();
+            if (isVolumeUpPressed && isVolumeDownPressed) {
+                triggerSecretMenu("Volume Up + Down Pressed");
+                return true;
+            }
         } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             isVolumeDownPressed = true;
-            checkSecretMenuTrigger();
-            if (isVolumeUpPressed && isVolumeDownPressed) return true;
+            lastVolumeDownTime = SystemClock.uptimeMillis();
+            if (isVolumeUpPressed && isVolumeDownPressed) {
+                triggerSecretMenu("Volume Up + Down Pressed");
+                return true;
+            }
         }
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
@@ -1562,6 +1679,7 @@ public class MainActivity extends Activity {
 
     View createTitleHeaderView(int maxDpWidth, int maxDpHeight) {
         Bitmap bmp = getTitleBitmap();
+        View vResult;
         if (bmp != null) {
             ImageView iv = new ImageView(this);
             iv.setImageBitmap(bmp);
@@ -1581,12 +1699,23 @@ public class MainActivity extends Activity {
             if (maxDpHeight > 0) {
                 iv.setMaxHeight((int) (maxDpHeight * density));
             }
-            return iv;
+            vResult = iv;
         } else {
             TextView t = createStyledTextView("GOQUIZ ADVENTURE", 30);
             t.setTextColor(GOLD_LIGHT);
-            return t;
+            vResult = t;
         }
+        vResult.setOnClickListener(v -> {
+            long now = System.currentTimeMillis();
+            if (now - lastSecretTapTime > 2000) secretTapCount = 0;
+            lastSecretTapTime = now;
+            secretTapCount++;
+            if (secretTapCount >= 7) {
+                secretTapCount = 0;
+                triggerSecretMenu("Title 7-Tap");
+            }
+        });
+        return vResult;
     }
 
     TextView createStyledTextView(String text, int sizeSp) {
@@ -3558,7 +3687,7 @@ public class MainActivity extends Activity {
             secretTapCount++;
             if (secretTapCount >= 7) {
                 secretTapCount = 0;
-                showSecretPasswordPrompt();
+                triggerSecretMenu("Title 7-Tap");
             }
         });
         p.addView(appTitle);
