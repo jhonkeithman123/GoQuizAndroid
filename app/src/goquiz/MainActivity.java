@@ -806,6 +806,17 @@ public class MainActivity extends Activity {
     private SensorEventListener sensorListener;
     private boolean isDriftRunning = false;
 
+    // Secret DB Menu Sensor & Key Tracking (Shake + Vol Up & Down)
+    private Sensor accelerometerSensor;
+    private SensorEventListener shakeSensorListener;
+    private float lastShakeX = 0, lastShakeY = 0, lastShakeZ = 0;
+    private long lastShakeTime = 0;
+    private boolean isVolumeUpPressed = false;
+    private boolean isVolumeDownPressed = false;
+    private long lastSecretPromptTime = 0;
+    private int secretTapCount = 0;
+    private long lastSecretTapTime = 0;
+
     private final Choreographer.FrameCallback driftCallback = new Choreographer.FrameCallback() {
         @Override
         public void doFrame(long frameTimeNanos) {
@@ -865,6 +876,35 @@ public class MainActivity extends Activity {
                     @Override
                     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
                 };
+
+                // Dedicated Accelerometer for Secret Menu Shake Detection
+                accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+                if (accelerometerSensor != null) {
+                    shakeSensorListener = new SensorEventListener() {
+                        @Override
+                        public void onSensorChanged(SensorEvent event) {
+                            if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER) return;
+                            float x = event.values[0];
+                            float y = event.values[1];
+                            float z = event.values[2];
+                            long curTime = System.currentTimeMillis();
+                            if ((curTime - lastShakeTime) > 100) {
+                                long diffTime = (curTime - lastShakeTime);
+                                lastShakeTime = curTime;
+                                float speed = Math.abs(x + y + z - lastShakeX - lastShakeY - lastShakeZ) / diffTime * 10000;
+                                if (speed > 800) {
+                                    checkSecretMenuTrigger();
+                                }
+                                lastShakeX = x;
+                                lastShakeY = y;
+                                lastShakeZ = z;
+                            }
+                        }
+
+                        @Override
+                        public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+                    };
+                }
             }
         } catch (Throwable ignored) {}
     }
@@ -881,9 +921,54 @@ public class MainActivity extends Activity {
         Choreographer.getInstance().removeFrameCallback(driftCallback);
     }
 
+    private void checkSecretMenuTrigger() {
+        if (isVolumeUpPressed && isVolumeDownPressed) {
+            long now = System.currentTimeMillis();
+            if (now - lastSecretPromptTime > 2500) {
+                lastSecretPromptTime = now;
+                runOnUiThread(this::showSecretPasswordPrompt);
+            }
+        }
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int action = event.getAction();
+        int keyCode = event.getKeyCode();
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            isVolumeUpPressed = (action == KeyEvent.ACTION_DOWN);
+            if (action == KeyEvent.ACTION_DOWN) checkSecretMenuTrigger();
+            if (isVolumeUpPressed && isVolumeDownPressed) return true;
+        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            isVolumeDownPressed = (action == KeyEvent.ACTION_DOWN);
+            if (action == KeyEvent.ACTION_DOWN) checkSecretMenuTrigger();
+            if (isVolumeUpPressed && isVolumeDownPressed) return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            isVolumeUpPressed = false;
+        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            isVolumeDownPressed = false;
+        }
+        return super.onKeyUp(keyCode, event);
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         lastTouchInteractionTime = SystemClock.uptimeMillis();
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            isVolumeUpPressed = true;
+            checkSecretMenuTrigger();
+            if (isVolumeUpPressed && isVolumeDownPressed) return true;
+        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            isVolumeDownPressed = true;
+            checkSecretMenuTrigger();
+            if (isVolumeUpPressed && isVolumeDownPressed) return true;
+        }
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 bgPanX = Math.max(-1.0f, bgPanX - 0.12f);
@@ -976,6 +1061,9 @@ public class MainActivity extends Activity {
         if (sensorManager != null && rotationSensor != null && sensorListener != null) {
             sensorManager.registerListener(sensorListener, rotationSensor, SensorManager.SENSOR_DELAY_GAME);
         }
+        if (sensorManager != null && accelerometerSensor != null && shakeSensorListener != null) {
+            sensorManager.registerListener(shakeSensorListener, accelerometerSensor, SensorManager.SENSOR_DELAY_UI);
+        }
         startAmbientDrift();
     }
 
@@ -990,6 +1078,9 @@ public class MainActivity extends Activity {
         if (sensorManager != null && sensorListener != null) {
             sensorManager.unregisterListener(sensorListener);
         }
+        if (sensorManager != null && shakeSensorListener != null) {
+            sensorManager.unregisterListener(shakeSensorListener);
+        }
         stopAmbientDrift();
     }
 
@@ -999,6 +1090,9 @@ public class MainActivity extends Activity {
         stopAmbientDrift();
         if (sensorManager != null && sensorListener != null) {
             sensorManager.unregisterListener(sensorListener);
+        }
+        if (sensorManager != null && shakeSensorListener != null) {
+            sensorManager.unregisterListener(shakeSensorListener);
         }
         activeInteractiveViews.clear();
         activeFramingBadges.clear();
@@ -3292,6 +3386,16 @@ public class MainActivity extends Activity {
         startBackgroundMusic();
         LinearLayout p = createFantasyPageContainer();
         View appTitle = createTitleHeaderView(290, 125);
+        appTitle.setOnClickListener(v -> {
+            long now = System.currentTimeMillis();
+            if (now - lastSecretTapTime > 2000) secretTapCount = 0;
+            lastSecretTapTime = now;
+            secretTapCount++;
+            if (secretTapCount >= 7) {
+                secretTapCount = 0;
+                showSecretPasswordPrompt();
+            }
+        });
         p.addView(appTitle);
         addViewToVerticalLayout(p, createStyledTextView("STUDENT LOGIN", 22));
         addViewToVerticalLayout(p, createStyledTextView("Enter your credentials to continue", 13));
@@ -3312,11 +3416,6 @@ public class MainActivity extends Activity {
         addCenteredMenuButton(p, login);
         addCenteredButton(p, register, 230);
         addVerticalSpacing(p, 6);
-
-        Button dbInspectorBtn = createStyledButton("🛠️ DB INSPECTOR");
-        setButtonFantasyStyle(dbInspectorBtn, Color.rgb(35, 45, 60), GOLD_LIGHT);
-        addCenteredButton(p, dbInspectorBtn, 200);
-        dbInspectorBtn.setOnClickListener(v -> showDatabaseInspector());
 
         login.setOnClickListener(v -> {
             String n = name.getText().toString().trim();
@@ -3417,6 +3516,70 @@ public class MainActivity extends Activity {
                 dbHelper.updateStudent(a);
             }
         }
+    }
+
+    void showSecretPasswordPrompt() {
+        if (isFinishing() || isDestroyed()) return;
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        float d = getResources().getDisplayMetrics().density;
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding((int) (22 * d), (int) (18 * d), (int) (22 * d), (int) (18 * d));
+        root.setBackgroundResource(R.drawable.card_panel);
+
+        TextView title = createStyledTextView("🔐 SECURITY ACCESS", 18);
+        title.setTextColor(GOLD_LIGHT);
+        title.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.addView(title);
+
+        TextView sub = createStyledTextView("Enter developer secret key to access database:", 12);
+        sub.setTextColor(MUTED);
+        sub.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.addView(sub);
+
+        addVerticalSpacing(root, 14);
+
+        EditText pwInput = createStyledEditText("Password Key");
+        pwInput.setInputType(0x81); // textPassword
+        root.addView(pwInput);
+
+        addVerticalSpacing(root, 16);
+
+        LinearLayout btnRow = new LinearLayout(this);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setGravity(Gravity.CENTER);
+
+        Button cancelBtn = createStyledButton("CANCEL");
+        setButtonFantasyStyle(cancelBtn, Color.rgb(45, 55, 72), GOLD_LIGHT);
+        cancelBtn.setOnClickListener(v -> dialog.dismiss());
+
+        Button authBtn = createStyledButton("AUTHENTICATE");
+        setButtonFantasyStyle(authBtn, Color.rgb(116, 67, 18), GOLD_LIGHT);
+        authBtn.setOnClickListener(v -> {
+            String entered = pwInput.getText().toString().trim();
+            if ("GQA-12345".equals(entered)) {
+                dialog.dismiss();
+                Toast.makeText(this, "Security Authentication Succeeded", Toast.LENGTH_SHORT).show();
+                showDatabaseInspector();
+            } else {
+                Toast.makeText(this, "Access Denied: Invalid Security Key", Toast.LENGTH_LONG).show();
+            }
+        });
+
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, (int) (44 * d), 1f);
+        btnLp.setMargins((int) (4 * d), 0, (int) (4 * d), 0);
+        btnRow.addView(cancelBtn, btnLp);
+        btnRow.addView(authBtn, btnLp);
+        root.addView(btnRow);
+
+        dialog.setContentView(root);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            dialog.getWindow().setLayout((int) (320 * d), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
     }
 
     void showDatabaseInspector() {
@@ -4658,11 +4821,6 @@ public class MainActivity extends Activity {
                     }
             );
         });
-
-        Button dbInspectorBtn = createStyledButton("🛠️ SQLITE DATABASE INSPECTOR");
-        setButtonFantasyStyle(dbInspectorBtn, Color.rgb(35, 45, 60), GOLD_LIGHT);
-        addCenteredButton(p, dbInspectorBtn, 260);
-        dbInspectorBtn.setOnClickListener(v -> showDatabaseInspector());
 
         addVerticalSpacing(p, 6);
         Button logout = createStyledButton("LOG OUT");
