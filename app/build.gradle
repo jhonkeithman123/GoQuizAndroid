@@ -20,7 +20,7 @@ android {
         minSdk 23
         targetSdk 35
         versionCode 7
-        versionName '1.2.1-b3' 
+        versionName '1.2.2-b1' 
     }
 
     // Custom structure: main folder removed, assets moved to app root

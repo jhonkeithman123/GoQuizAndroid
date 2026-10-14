@@ -2,7 +2,7 @@
 
 All notable changes to the **GoQuiz Adventure** project are documented here. This changelog is dynamically embedded into both the Android and Desktop builds.
 
-## [1.2.1-b3] - 2026-10-14
+## [1.2.2-b1] - 2026-10-14
 ### Added
 - **20-Second Matchmaking Countdown & Ready Check**: Required mutual confirmation before launching 1v1 PvP duels for both Global (Cloud) and Local LAN.
 - **Cross-Platform UI Alignment**: Identical fantasy-themed versus podiums, avatars, status badges, and action buttons across Android and Desktop.

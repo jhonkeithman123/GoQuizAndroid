@@ -1,4 +1,4 @@
-[v1.2.1-b3] - 20s Matchmaking Countdown & Cross-Platform Ready Check
+[v1.2.2-b1] - 20s Matchmaking Countdown & Cross-Platform Ready Check
 • Added 20-second Matchmaking Countdown: both players must confirm readiness within 20s before launch.
 • Cross-Platform UI Consistency: identical fantasy versus podiums, avatars, status badges, and action buttons on Mobile & Desktop.
 • Real-time Opponent Readiness Hook: live visual update when your rival locks in their ready status.

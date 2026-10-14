@@ -1,13 +1,13 @@
-# 🎮 GoQuiz Adventure v1.2.1-b3 (Beta 3) — Release Notes
+# 🎮 GoQuiz Adventure v1.2.2-b1 (Beta 1) — Release Notes
 
-> **Tag:** `v1.2.1-b3` • **Build:** `7` • **Channel:** `Beta` • **Release Date:** October 2026  
+> **Tag:** `v1.2.2-b1` • **Build:** `7` • **Channel:** `Beta` • **Release Date:** October 2026  
 > **Platforms:** Android (Mobile/Tablet) & Windows (Desktop/PC)
 
 ---
 
 ## 🌟 Overview
 
-**GoQuiz Adventure v1.2.1-b3** is a stability and quality-of-life update that brings **synchronized 20-second matchmaking countdowns and mutual ready checks** to 1v1 PvP duels. Whether playing across the world on the **Cloud Gateway** or locally over **Wi-Fi / Hotspot LAN**, both participants must actively confirm readiness before the match launches.
+**GoQuiz Adventure v1.2.2-b1** adapts the **v1.2.2** release baseline and brings **synchronized 20-second matchmaking countdowns and mutual ready checks** to 1v1 PvP duels. Whether playing across the world on the **Cloud Gateway** or locally over **Wi-Fi / Hotspot LAN**, both participants must actively confirm readiness before the match launches.
 
 This release also establishes **visual and functional UI consistency** between Android and Desktop clients, sporting matching versus podiums, avatars, dynamic countdown timers, and automated room garbage collection.
 
@@ -42,7 +42,7 @@ This release also establishes **visual and functional UI consistency** between A
 
 ## 📦 Distribution Packages
 
-* **Android Package:** `dist/GoQuiz-v1.2.1-b3.apk` (and `app-debug.apk`)
-* **Desktop Portable Bundle:** `dist/GoQuiz-v1.2.1-b3-Windows.zip` (Zero-dependency portable bundle with embedded Java 17 runtime)
-* **Desktop Standalone Executable:** `dist/GoQuiz-v1.2.1-b3.exe`
-* **Cross-Platform JAR:** `dist/GoQuiz-v1.2.1-b3.jar`
+* **Android Package:** `dist/GoQuiz-v1.2.2-b1.apk` (and `app-debug.apk`)
+* **Desktop Portable Bundle:** `dist/GoQuiz-v1.2.2-b1-Windows.zip` (Zero-dependency portable bundle with embedded Java 17 runtime)
+* **Desktop Standalone Executable:** `dist/GoQuiz-v1.2.2-b1.exe`
+* **Cross-Platform JAR:** `dist/GoQuiz-v1.2.2-b1.jar`
