@@ -21,10 +21,10 @@ To build and run this Android project, ensure the following software is installe
 ## 2. Environment Configuration
 
 ### Android SDK Path (`local.properties`)
-The project reads the location of your Android SDK from [local.properties](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/local.properties) in the project root:
+The project reads the location of your Android SDK from [`local.properties`](local.properties) in the project root:
 
 ```properties
-sdk.dir=C\:\\Users\\131fgh\\AppData\\Local\\Android\\Sdk
+sdk.dir=C\:\\Users\\<USERNAME>\\AppData\\Local\\Android\\Sdk
 ```
 *(If building on another machine, ensure this path points to that machine's Android SDK location).*
 
@@ -45,7 +45,7 @@ java -version
 - **Compile SDK**: `35`
 - **Target SDK**: `35`
 - **Min SDK**: `23` (Supports Android 6.0 through Android 15+)
-- **Network Permissions**: `android.permission.INTERNET` (configured in [AndroidManifest.xml](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/app/src/main/AndroidManifest.xml))
+- **Network Permissions**: `android.permission.INTERNET` (configured in [`app/src/AndroidManifest.xml`](app/src/AndroidManifest.xml))
 - **Animation & Cinematic System**:
   - **Pre-Question Cinematic Intro**: Plays a 7-panel mix-fade (crossfade) narrative sequence (`Frame1.jpg` to `Frame7.jpg`) after selecting a level before displaying Question 1, with a fair duration (~1.5s display + 600ms crossfade), interactive screen tap advance, and an instant `SKIP ⏩` button.
   - **Question Screen Background**: Uses `Frame7.jpg` as the in-game background for the questions menu, preserving cinematic continuity from the end of the cutscene straight into gameplay.
@@ -167,11 +167,11 @@ Produces: `app/build/outputs/apk/release/app-release.apk`
 ```
 Produces: `app/build/outputs/apk/debug/app-debug.apk`
 
-### C. Build & Export Both to `/apks` Folder
+### C. Build & Export Both to `/dist` Folder
 ```powershell
 .\gradlew.bat exportApks
 ```
-Builds both variants and automatically copies them into the root [apks/](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/apks) folder for easy access.
+Builds both variants and automatically copies them into the root [`dist/`](dist/) folder for easy access.
 
 ---
 

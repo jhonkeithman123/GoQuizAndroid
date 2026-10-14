@@ -18,7 +18,7 @@ This is a native Android rebuild based on the uploaded QuizGame.java question ba
 
 You can run everything using your custom **`goquiz`** command:
 
-### GoQuiz CLI Runner ([`goquiz.bat`](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/goquiz.bat)):
+### GoQuiz CLI Runner ([`goquiz.bat`](goquiz.bat)):
 Type **`goquiz`** in your terminal to open an interactive menu, or pass a command directly:
 
 | Command | Action |
@@ -37,7 +37,7 @@ Type **`goquiz`** in your terminal to open an interactive menu, or pass a comman
 | `goquiz help` | Shows all available commands |
 
 
-All individual command scripts are located in the [`scripts/`](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/scripts) folder.
+All individual command scripts are located in the [`scripts/`](scripts/) folder.
 
-For complete prerequisites, SDK setup, and detailed file map, see [REQUIREMENTS.md](file:///c:/Users/131fgh/Desktop/GoQuizAndroidRebuilt/REQUIREMENTS.md).
+For complete prerequisites, SDK setup, and detailed file map, see [REQUIREMENTS.md](REQUIREMENTS.md).
 

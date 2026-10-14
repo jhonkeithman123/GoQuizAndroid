@@ -55,7 +55,7 @@ Access is secured behind a master authorization challenge (`"GQA-12345"`) and gu
 
 ## 📦 Distribution Packages
 
-* **Android Beta Package:** `dist/v1.3.0-b1/GoQuiz-v1.3.0-b1.apk`
+* **Android Beta Package:** [`GoQuiz-v1.3.0-b1.apk`](dist/v1.3.0-b1/GoQuiz-v1.3.0-b1.apk)
 * **Release Channel:** `Beta Channel (v1.3.0-b1)`
 * **Git Tag:** `v1.3.0-b1`
 
