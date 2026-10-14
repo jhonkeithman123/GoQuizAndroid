@@ -7838,10 +7838,10 @@ public class QuizGame extends JFrame {
                 )
         );
 
-        String vName = "1.2.1-b2";
-        int vCode = 6;
+        String vName = "1.2.1-b3";
+        int vCode = 7;
         String releaseDate = "October 2026";
-        String channel = "Beta Release (b2)";
+        String channel = "Beta Release (b3)";
         File vf = resolveAppPath("@/assets/version.json");
         if (vf != null && vf.exists()) {
             try {

@@ -1,3 +1,10 @@
+[v1.2.1-b3] - 20s Matchmaking Countdown & Cross-Platform Ready Check
+• Added 20-second Matchmaking Countdown: both players must confirm readiness within 20s before launch.
+• Cross-Platform UI Consistency: identical fantasy versus podiums, avatars, status badges, and action buttons on Mobile & Desktop.
+• Real-time Opponent Readiness Hook: live visual update when your rival locks in their ready status.
+• Automatic Room Expiry & Watchdog: room and match are safely cancelled if a player declines or times out.
+• Synchronized Dual-Network Support: operational across both Cloud Gateway (Internet) and Local LAN.
+
 [v1.2.1-b2] - Global & LAN Duel Rooms & Dual-Network Scanner
 • Added Host Scope Selector: choose between '🌐 GLOBAL (Cloud Gateway)' and '🏠 LOCAL LAN' when creating duel rooms.
 • Added Dual-Network Room Scanner: automatically searches and cleanly separates Global Public rooms and Local LAN rooms.
