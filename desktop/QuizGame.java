@@ -5410,27 +5410,48 @@ public class QuizGame extends JFrame {
                 roomsList.add(Box.createVerticalStrut(8));
             }
 
-            // 2. CLEAR NETWORK BOUNDARY / BARRIER
+            // 2. THIN NETWORK BOUNDARY LINE (LAN / GLOBAL)
             if ("ALL".equals(filter)) {
-                JPanel barrierCard = new FantasyPanel(10, 14);
-                barrierCard.setLayout(new BoxLayout(barrierCard, BoxLayout.Y_AXIS));
-                barrierCard.setMaximumSize(new Dimension(800, 50));
+                JPanel divider = new JPanel(new GridBagLayout());
+                divider.setOpaque(false);
+                divider.setMaximumSize(new Dimension(800, 20));
+                divider.setPreferredSize(new Dimension(800, 20));
 
-                JLabel bTitle = new JLabel("⚡ NETWORK BARRIER: GLOBAL CLOUD ⟷ LOCAL LAN ⚡", SwingConstants.CENTER);
-                bTitle.setFont(pixelFont(Font.BOLD, 12));
-                bTitle.setForeground(GOLD_LIGHT);
-                bTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+                GridBagConstraints gbc = new GridBagConstraints();
+                gbc.gridy = 0;
+                gbc.insets = new Insets(0, 6, 0, 6);
 
-                JLabel bDesc = new JLabel("Top: Worldwide Internet Rooms  •  Bottom: Same Wi-Fi / Hotspot Rooms", SwingConstants.CENTER);
-                bDesc.setFont(pixelFont(Font.PLAIN, 11));
-                bDesc.setForeground(TEXT);
-                bDesc.setAlignmentX(Component.CENTER_ALIGNMENT);
+                // Left thin line
+                gbc.gridx = 0;
+                gbc.weightx = 1.0;
+                gbc.fill = GridBagConstraints.HORIZONTAL;
+                JPanel leftLine = new JPanel();
+                leftLine.setBackground(new Color(65, 70, 80));
+                leftLine.setPreferredSize(new Dimension(10, 1));
+                leftLine.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+                divider.add(leftLine, gbc);
 
-                barrierCard.add(bTitle);
-                barrierCard.add(Box.createVerticalStrut(2));
-                barrierCard.add(bDesc);
-                roomsList.add(barrierCard);
-                roomsList.add(Box.createVerticalStrut(8));
+                // Center gray text
+                gbc.gridx = 1;
+                gbc.weightx = 0.0;
+                gbc.fill = GridBagConstraints.NONE;
+                JLabel textLabel = new JLabel("LAN / GLOBAL");
+                textLabel.setFont(pixelFont(Font.BOLD, 10));
+                textLabel.setForeground(new Color(135, 140, 150));
+                divider.add(textLabel, gbc);
+
+                // Right thin line
+                gbc.gridx = 2;
+                gbc.weightx = 1.0;
+                gbc.fill = GridBagConstraints.HORIZONTAL;
+                JPanel rightLine = new JPanel();
+                rightLine.setBackground(new Color(65, 70, 80));
+                rightLine.setPreferredSize(new Dimension(10, 1));
+                rightLine.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+                divider.add(rightLine, gbc);
+
+                roomsList.add(divider);
+                roomsList.add(Box.createVerticalStrut(6));
             }
 
             // 3. LOCAL LAN ROOMS

@@ -7322,29 +7322,34 @@ public class MainActivity extends Activity {
                 addVerticalSpacing(roomsList, 8);
             }
 
-            // 2. CLEAR NETWORK BOUNDARY / BARRIER
+            // 2. THIN NETWORK BOUNDARY LINE (LAN / GLOBAL)
             if ("ALL".equals(filter)) {
-                LinearLayout barrierCard = new LinearLayout(this);
-                barrierCard.setOrientation(LinearLayout.VERTICAL);
-                barrierCard.setGravity(Gravity.CENTER_HORIZONTAL);
-                barrierCard.setPadding((int) (10 * d), (int) (6 * d), (int) (10 * d), (int) (6 * d));
-                android.graphics.drawable.GradientDrawable bBg = new android.graphics.drawable.GradientDrawable();
-                bBg.setColor(Color.argb(150, 32, 24, 12));
-                bBg.setCornerRadius(6 * d);
-                bBg.setStroke((int) (1.5f * d), Color.argb(200, 231, 160, 39));
-                barrierCard.setBackground(bBg);
+                LinearLayout divider = new LinearLayout(this);
+                divider.setOrientation(LinearLayout.HORIZONTAL);
+                divider.setGravity(Gravity.CENTER_VERTICAL);
+                divider.setPadding((int) (4 * d), (int) (4 * d), (int) (4 * d), (int) (4 * d));
 
-                TextView bTitle = createStyledTextView("⚡ NETWORK BOUNDARY: GLOBAL CLOUD ⟷ LOCAL LAN ⚡", 11);
-                bTitle.setTextColor(GOLD_LIGHT);
-                bTitle.setGravity(Gravity.CENTER_HORIZONTAL);
-                TextView bDesc = createStyledTextView("Top: Worldwide Internet Rooms  •  Bottom: Same Wi-Fi / Hotspot Rooms", 10);
-                bDesc.setTextColor(TEXT);
-                bDesc.setGravity(Gravity.CENTER_HORIZONTAL);
+                View leftLine = new View(this);
+                LinearLayout.LayoutParams leftParams = new LinearLayout.LayoutParams(0, (int) Math.max(1, 1 * d), 1.0f);
+                leftLine.setLayoutParams(leftParams);
+                leftLine.setBackgroundColor(Color.argb(100, 110, 115, 125));
 
-                barrierCard.addView(bTitle);
-                barrierCard.addView(bDesc);
-                roomsList.addView(barrierCard);
-                addVerticalSpacing(roomsList, 8);
+                TextView textLabel = createStyledTextView("LAN / GLOBAL", 10);
+                textLabel.setTextColor(Color.rgb(135, 140, 150));
+                textLabel.setPadding((int) (8 * d), 0, (int) (8 * d), 0);
+                textLabel.setGravity(Gravity.CENTER);
+
+                View rightLine = new View(this);
+                LinearLayout.LayoutParams rightParams = new LinearLayout.LayoutParams(0, (int) Math.max(1, 1 * d), 1.0f);
+                rightLine.setLayoutParams(rightParams);
+                rightLine.setBackgroundColor(Color.argb(100, 110, 115, 125));
+
+                divider.addView(leftLine);
+                divider.addView(textLabel);
+                divider.addView(rightLine);
+
+                roomsList.addView(divider);
+                addVerticalSpacing(roomsList, 6);
             }
 
             // 3. LOCAL LAN ROOMS
