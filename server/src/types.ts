@@ -75,16 +75,19 @@ export interface IDuelRoom {
   active: boolean;
   finished: boolean;
   createdAt: number;
-  hostEvents?: string[];
-  guestEvents?: string[];
+  hostEvents: string[];
+  guestEvents: string[];
+  hostPollResolver?: ((events: string[]) => void) | null;
+  guestPollResolver?: ((events: string[]) => void) | null;
   lastHostPing?: number;
+  lastGuestPing?: number;
   hostClientId?: string;
   guestClientId?: string;
   state?: 'waiting' | 'ready_check' | 'active' | 'finished';
   hostReady?: boolean;
   guestReady?: boolean;
   readyCheckExpiresAt?: number;
-  pushEvent?: (role: 'host' | 'guest', event: string) => void;
+  pushEvent(role: 'host' | 'guest', event: string): void;
 }
 
 export interface RoomSummary {
