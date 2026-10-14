@@ -39,6 +39,7 @@ async function runLocalServerTests() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      hostClientId: 'host_instance_abc',
       hostName: 'LocalTester',
       hostGender: 'Boy',
       language: 'JavaScript',
@@ -63,12 +64,26 @@ async function runLocalServerTests() {
   const roomLookup = await res.json();
   console.log(`  ✓ GET /api/room/${roomRes.code} -> Host: ${roomLookup.hostName}, Lang: ${roomLookup.language} (${formatMs(t0)})`);
 
-  console.log('\n[TEST 5B] Joining Room & Testing Event Relay (Cloud Duel Protocol)...');
+  console.log('\n[TEST 5B] Testing Self-Join Prevention (hostClientId check)...');
+  t0 = performance.now();
+  let selfJoinRes = await fetch(`${HTTP_URL}/api/room/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: roomRes.code, guestClientId: 'host_instance_abc', guestName: 'LocalTester', guestGender: 'Boy' })
+  });
+  if (selfJoinRes.status === 400) {
+    let selfJoinJson = await selfJoinRes.json();
+    console.log(`  ✓ Self-join blocked as expected (HTTP 400: "${selfJoinJson.error}") (${formatMs(t0)})`);
+  } else {
+    throw new Error(`Self-join was not blocked! HTTP ${selfJoinRes.status}`);
+  }
+
+  console.log('\n[TEST 5C] Joining Room from Second Player & Testing Event Relay...');
   t0 = performance.now();
   res = await fetch(`${HTTP_URL}/api/room/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: roomRes.code, guestName: 'GuestChallenger', guestGender: 'Girl' })
+    body: JSON.stringify({ code: roomRes.code, guestClientId: 'guest_instance_xyz', guestName: 'GuestChallenger', guestGender: 'Girl' })
   });
   const joinData = await res.json();
   console.log(`  ✓ POST /api/room/join -> ${joinData.matchStartMsg.slice(0, 45)}... (${formatMs(t0)})`);

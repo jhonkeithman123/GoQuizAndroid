@@ -45,10 +45,16 @@ This release also introduces **sub-tab lobby filtering**, a **prominent visual n
 * **Type-Safe Routing:** Fixed TypeScript parameter handling (`TS2339`) on `req.params.code`.
 * **Graceful JSON Parsing:** Prevents body-parser crashes on malformed requests.
 
-### ⚔️ 5. Global Cloud Dueling Fix (Real-Time REST Event Relay)
+### ⚔️ 5. Global Cloud Dueling Fix (Real-Time REST Event Relay & Multi-Player Sync)
 * **Resolved Incomplete Join Bug:** Fixed an issue where joining a global room displayed *"ROOM # is active on Cloud Gateway connecting player to match..."* but did not transition the host or guest into the game.
-* **Zero-Dependency Event Relay:** Built an HTTPS-compatible long-poll event relay on the Cloud Gateway (`/api/room/join`, `/api/room/:code/action`, `/api/room/:code/poll`, `/api/room/:code/leave`) that operates through firewalls, NAT, mobile networks, and Render proxies without raw TCP port dependencies.
-* **Synchronized Live Duel Launch:** Both Desktop and Android `DuelClient` engines poll the relay at sub-millisecond latencies. As soon as the challenger joins, `MATCH_START` triggers automatically on both devices, synchronizing questions, live HP, and scores identically to local LAN play.
+* **Strict Two-Player Launch Guarantee & Self-Join Prevention:** Fixed an issue where the host could accidentally join their own room, causing the match to prematurely launch solo with 1 player. Added unique `CLIENT_INSTANCE_ID` checks on the server (`guestClientId !== hostClientId`) and client:
+  * Hosts can never join their own hosted rooms (HTTP 400 rejection).
+  * The host's own room is automatically hidden from their own open rooms list.
+  * The match **strictly waits** on the host's screen until a real remote opponent joins.
+* **Non-Blocking Host Lobby:** Removed modal blocking dialogs (`JOptionPane.showMessageDialog` on Desktop and `showFantasyAlertDialog` on Mobile) that froze the UI event dispatch thread upon room creation, allowing smooth instant transition into the duel when an opponent connects.
+* **HTTP Connection & Socket Pooling Hardening:** Added explicit `Connection: close` headers and unconditional `finally { conn.disconnect(); }` across Desktop and Android polling loops and actions, preventing socket exhaustion and hung HTTP connections on mobile and desktop.
+* **Zero-Dependency Event Relay:** Built an HTTPS-compatible event relay on the Cloud Gateway (`/api/room/join`, `/api/room/:code/action`, `/api/room/:code/poll`, `/api/room/:code/leave`) that operates seamlessly through firewalls, NAT, mobile 4G/5G, and Render proxies without raw TCP port dependencies.
+* **Synchronized Live Duel Launch:** Both Desktop and Android `DuelClient` engines poll the relay. As soon as the challenger joins, `MATCH_START` triggers simultaneously on both devices, synchronizing questions, live HP, and scores identically to local LAN play.
 
 ---
 

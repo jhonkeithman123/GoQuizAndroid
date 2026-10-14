@@ -1,13 +1,13 @@
-import 'dotenv/config';
-import express, { type Request, type Response } from 'express';
-import cors from 'cors';
-import { createServer, type Server as HttpServer } from 'http';
-import { WebSocketServer, WebSocket, type RawData } from 'ws';
-import net, { type Socket as TcpSocket, type Server as TcpServer } from 'net';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import "dotenv/config";
+import express, { type Request, type Response } from "express";
+import cors from "cors";
+import { createServer, type Server as HttpServer } from "http";
+import { WebSocketServer, WebSocket, type RawData } from "ws";
+import net, { type Socket as TcpSocket, type Server as TcpServer } from "net";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   LeaderboardEntry,
   SortedLeaderboardItem,
@@ -17,22 +17,29 @@ import type {
   IClientSession,
   IDuelRoom,
   RoomSummary,
-  KeepAliveResponse
-} from './types.js';
+  KeepAliveResponse,
+} from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, '..');
+const ROOT_DIR = path.resolve(__dirname, "..");
 
 // ==========================================
 // CONFIGURATION & ENVIRONMENT
 // ==========================================
-const HTTP_PORT: number = parseInt(process.env.PORT || '5050', 10);
-const TCP_PORT: number = parseInt(process.env.TCP_PORT || '5052', 10);
-const DATA_DIR: string = path.join(ROOT_DIR, 'data');
-const LEADERBOARD_JSON: string = path.join(DATA_DIR, 'leaderboard.json');
-const PROP_LEADERBOARD: string = path.join(ROOT_DIR, 'online_leaderboard.properties');
-const ROOT_PROP_LEADERBOARD: string = path.join(ROOT_DIR, '..', 'online_leaderboard.properties');
+const HTTP_PORT: number = parseInt(process.env.PORT || "5050", 10);
+const TCP_PORT: number = parseInt(process.env.TCP_PORT || "5052", 10);
+const DATA_DIR: string = path.join(ROOT_DIR, "data");
+const LEADERBOARD_JSON: string = path.join(DATA_DIR, "leaderboard.json");
+const PROP_LEADERBOARD: string = path.join(
+  ROOT_DIR,
+  "online_leaderboard.properties",
+);
+const ROOT_PROP_LEADERBOARD: string = path.join(
+  ROOT_DIR,
+  "..",
+  "online_leaderboard.properties",
+);
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -41,8 +48,9 @@ if (!fs.existsSync(DATA_DIR)) {
 // ==========================================
 // SUPABASE CLIENT INITIALIZATION
 // ==========================================
-const SUPABASE_URL: string = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY: string = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const SUPABASE_URL: string = process.env.SUPABASE_URL || "";
+const SUPABASE_KEY: string =
+  process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 let supabase: SupabaseClient | null = null;
 
 if (SUPABASE_URL && SUPABASE_KEY) {
@@ -50,10 +58,15 @@ if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     console.log(`[Database] Connected to Supabase Cloud: ${SUPABASE_URL}`);
   } catch (err: any) {
-    console.warn('[Database] Failed to initialize Supabase client:', err.message);
+    console.warn(
+      "[Database] Failed to initialize Supabase client:",
+      err.message,
+    );
   }
 } else {
-  console.log('[Database] Supabase credentials not provided. Using local file storage fallback.');
+  console.log(
+    "[Database] Supabase credentials not provided. Using local file storage fallback.",
+  );
 }
 
 // ==========================================
@@ -66,79 +79,100 @@ async function loadLeaderboard(): Promise<void> {
   if (supabase) {
     try {
       const { data, error } = await supabase
-        .from('leaderboard')
-        .select('player_name, score, gender, updated_at')
-        .order('score', { ascending: false });
+        .from("leaderboard")
+        .select("player_name, score, gender, updated_at")
+        .order("score", { ascending: false });
 
       if (!error && Array.isArray(data)) {
         leaderboard.clear();
-        for (const row of (data as DbLeaderboardRow[])) {
+        for (const row of data as DbLeaderboardRow[]) {
           leaderboard.set(row.player_name, {
             score: Math.max(0, row.score || 0),
-            gender: row.gender || 'Unknown',
-            updatedAt: row.updated_at || new Date().toISOString()
+            gender: row.gender || "Unknown",
+            updatedAt: row.updated_at || new Date().toISOString(),
           });
         }
-        console.log(`[Leaderboard] Synced ${leaderboard.size} entries from Supabase PostgreSQL`);
+        console.log(
+          `[Leaderboard] Synced ${leaderboard.size} entries from Supabase PostgreSQL`,
+        );
         saveLocalLeaderboard();
         return;
       } else if (error) {
-        console.warn('[Leaderboard] Supabase fetch error:', error.message);
+        console.warn("[Leaderboard] Supabase fetch error:", error.message);
       }
     } catch (err: any) {
-      console.warn('[Leaderboard] Supabase load failed, falling back to local:', err.message);
+      console.warn(
+        "[Leaderboard] Supabase load failed, falling back to local:",
+        err.message,
+      );
     }
   }
 
   // 2. Fallback to local JSON
   try {
     if (fs.existsSync(LEADERBOARD_JSON)) {
-      const raw = fs.readFileSync(LEADERBOARD_JSON, 'utf-8');
+      const raw = fs.readFileSync(LEADERBOARD_JSON, "utf-8");
       const data: Record<string, any> = JSON.parse(raw);
       for (const [name, val] of Object.entries(data)) {
-        const score = typeof val === 'object' && val !== null ? val.score : Number(val);
-        const gender = typeof val === 'object' && val !== null ? (val.gender || 'Unknown') : 'Unknown';
+        const score =
+          typeof val === "object" && val !== null ? val.score : Number(val);
+        const gender =
+          typeof val === "object" && val !== null
+            ? val.gender || "Unknown"
+            : "Unknown";
         leaderboard.set(name, {
           score: Math.max(0, score || 0),
           gender,
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         });
       }
-      console.log(`[Leaderboard] Loaded ${leaderboard.size} entries from local JSON`);
+      console.log(
+        `[Leaderboard] Loaded ${leaderboard.size} entries from local JSON`,
+      );
       return;
     }
   } catch (err: any) {
-    console.warn('[Leaderboard] Failed to parse JSON leaderboard:', err.message);
+    console.warn(
+      "[Leaderboard] Failed to parse JSON leaderboard:",
+      err.message,
+    );
   }
 
   // 3. Fallback to legacy properties file
   const propFile = fs.existsSync(PROP_LEADERBOARD)
     ? PROP_LEADERBOARD
-    : (fs.existsSync(ROOT_PROP_LEADERBOARD) ? ROOT_PROP_LEADERBOARD : null);
+    : fs.existsSync(ROOT_PROP_LEADERBOARD)
+      ? ROOT_PROP_LEADERBOARD
+      : null;
 
   if (propFile) {
     try {
-      const content = fs.readFileSync(propFile, 'utf-8');
+      const content = fs.readFileSync(propFile, "utf-8");
       content.split(/\r?\n/).forEach((line: string) => {
         const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) return;
-        const eqIdx = trimmed.indexOf('=');
+        if (!trimmed || trimmed.startsWith("#")) return;
+        const eqIdx = trimmed.indexOf("=");
         if (eqIdx > 0) {
           const name = trimmed.substring(0, eqIdx).trim();
           const score = parseInt(trimmed.substring(eqIdx + 1).trim(), 10) || 0;
           if (name) {
             leaderboard.set(name, {
               score: Math.max(0, score),
-              gender: 'Unknown',
-              updatedAt: new Date().toISOString()
+              gender: "Unknown",
+              updatedAt: new Date().toISOString(),
             });
           }
         }
       });
-      console.log(`[Leaderboard] Imported ${leaderboard.size} entries from properties file: ${propFile}`);
+      console.log(
+        `[Leaderboard] Imported ${leaderboard.size} entries from properties file: ${propFile}`,
+      );
       saveLocalLeaderboard();
     } catch (err: any) {
-      console.warn('[Leaderboard] Failed to read properties file:', err.message);
+      console.warn(
+        "[Leaderboard] Failed to read properties file:",
+        err.message,
+      );
     }
   }
 }
@@ -149,31 +183,42 @@ function saveLocalLeaderboard(): void {
     for (const [name, data] of leaderboard.entries()) {
       obj[name] = data;
     }
-    fs.writeFileSync(LEADERBOARD_JSON, JSON.stringify(obj, null, 2), 'utf-8');
+    fs.writeFileSync(LEADERBOARD_JSON, JSON.stringify(obj, null, 2), "utf-8");
 
     // Also update legacy properties file
-    let propContent = '# GoQuiz Shared Online Leaderboard\n# Updated ' + new Date().toISOString() + '\n';
+    let propContent =
+      "# GoQuiz Shared Online Leaderboard\n# Updated " +
+      new Date().toISOString() +
+      "\n";
     for (const [name, data] of leaderboard.entries()) {
       propContent += `${name}=${data.score}\n`;
     }
-    fs.writeFileSync(PROP_LEADERBOARD, propContent, 'utf-8');
+    fs.writeFileSync(PROP_LEADERBOARD, propContent, "utf-8");
   } catch (err: any) {
-    console.error('[Leaderboard] Local save error:', err.message);
+    console.error("[Leaderboard] Local save error:", err.message);
   }
 }
 
-async function updateScore(name: string, score: number | string, gender: string = 'Unknown'): Promise<void> {
-  if (!name || typeof name !== 'string') return;
+async function updateScore(
+  name: string,
+  score: number | string,
+  gender: string = "Unknown",
+): Promise<void> {
+  if (!name || typeof name !== "string") return;
   const cleanName = clean(name).trim();
   if (!cleanName) return;
-  const newScore = Math.max(0, typeof score === 'number' ? score : parseInt(score, 10) || 0);
+  const newScore = Math.max(
+    0,
+    typeof score === "number" ? score : parseInt(score, 10) || 0,
+  );
   const current = leaderboard.get(cleanName);
 
   if (!current || newScore > current.score) {
     const entry: LeaderboardEntry = {
       score: newScore,
-      gender: gender && gender !== 'Unknown' ? gender : (current?.gender || 'Unknown'),
-      updatedAt: new Date().toISOString()
+      gender:
+        gender && gender !== "Unknown" ? gender : current?.gender || "Unknown",
+      updatedAt: new Date().toISOString(),
     };
     leaderboard.set(cleanName, entry);
     saveLocalLeaderboard();
@@ -185,16 +230,21 @@ async function updateScore(name: string, score: number | string, gender: string 
           player_name: cleanName,
           score: newScore,
           gender: entry.gender,
-          updated_at: entry.updatedAt
+          updated_at: entry.updatedAt,
         };
         const { error } = await supabase
-          .from('leaderboard')
-          .upsert(row, { onConflict: 'player_name' });
+          .from("leaderboard")
+          .upsert(row, { onConflict: "player_name" });
 
         if (error) {
-          console.warn(`[Supabase] Leaderboard upsert error for ${cleanName}:`, error.message);
+          console.warn(
+            `[Supabase] Leaderboard upsert error for ${cleanName}:`,
+            error.message,
+          );
         } else {
-          console.log(`[Supabase] Synced high score for ${cleanName}: ${newScore} pts`);
+          console.log(
+            `[Supabase] Synced high score for ${cleanName}: ${newScore} pts`,
+          );
         }
       } catch (err: any) {
         console.warn(`[Supabase] Sync failed:`, err.message);
@@ -203,7 +253,12 @@ async function updateScore(name: string, score: number | string, gender: string 
   }
 }
 
-async function recordMatchHistory(room: IDuelRoom, hostScore: number, guestScore: number, winnerName: string): Promise<void> {
+async function recordMatchHistory(
+  room: IDuelRoom,
+  hostScore: number,
+  guestScore: number,
+  winnerName: string,
+): Promise<void> {
   if (!supabase || !room) return;
   try {
     const row: DbMatchHistoryRow = {
@@ -215,12 +270,13 @@ async function recordMatchHistory(room: IDuelRoom, hostScore: number, guestScore
       guest_score: guestScore,
       language: room.language,
       difficulty: room.difficulty,
-      finished_at: new Date().toISOString()
+      finished_at: new Date().toISOString(),
     };
-    const { error } = await supabase.from('match_history').insert(row);
-    if (error) console.warn('[Supabase] Match history log error:', error.message);
+    const { error } = await supabase.from("match_history").insert(row);
+    if (error)
+      console.warn("[Supabase] Match history log error:", error.message);
   } catch (err: any) {
-    console.warn('[Supabase] Match history log failed:', err.message);
+    console.warn("[Supabase] Match history log failed:", err.message);
   }
 }
 
@@ -232,7 +288,7 @@ function getSortedLeaderboard(): SortedLeaderboardItem[] {
 
 function getLeaderboardMessage(): string {
   const sorted = getSortedLeaderboard();
-  let msg = 'BOARD';
+  let msg = "BOARD";
   for (const entry of sorted) {
     msg += `|${clean(entry.name)}|${entry.score}`;
     if (msg.length > 7000) break;
@@ -241,8 +297,8 @@ function getLeaderboardMessage(): string {
 }
 
 function clean(str: string | null | undefined): string {
-  if (!str) return '';
-  return String(str).replace(/[|\r\n]/g, ' ');
+  if (!str) return "";
+  return String(str).replace(/[|\r\n]/g, " ");
 }
 
 // Initial load
@@ -258,16 +314,18 @@ class DuelRoom implements IDuelRoom {
   language: string;
   difficulty: string;
   seed: number;
-  questionsPayload: string = '';
+  questionsPayload: string = "";
   hostSession: IClientSession | null;
   guestSession: IClientSession | null = null;
-  guestName: string = '';
-  guestGender: string = '';
+  guestName: string = "";
+  guestGender: string = "";
   hostScore: number = 0;
   guestScore: number = 0;
   active: boolean = false;
   finished: boolean = false;
   createdAt: number = Date.now();
+  hostClientId: string = "";
+  guestClientId: string = "";
 
   // Cloud REST Relay Queues & Listeners
   hostEvents: string[] = [];
@@ -277,7 +335,14 @@ class DuelRoom implements IDuelRoom {
   lastHostPing: number = Date.now();
   lastGuestPing: number = Date.now();
 
-  constructor(code: string, hostName: string, hostGender: string, language: string, difficulty: string, hostSession: IClientSession | null) {
+  constructor(
+    code: string,
+    hostName: string,
+    hostGender: string,
+    language: string,
+    difficulty: string,
+    hostSession: IClientSession | null,
+  ) {
     this.code = code;
     this.hostName = hostName;
     this.hostGender = hostGender;
@@ -287,8 +352,8 @@ class DuelRoom implements IDuelRoom {
     this.hostSession = hostSession;
   }
 
-  pushEvent(role: 'host' | 'guest', event: string): void {
-    if (role === 'host') {
+  pushEvent(role: "host" | "guest", event: string): void {
+    if (role === "host") {
       if (this.hostSession) {
         this.hostSession.send(event);
       }
@@ -319,11 +384,11 @@ const activeSessions: Set<IClientSession> = new Set();
 let totalDuelsCompleted: number = 0;
 
 function generateRoomCode(): string {
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let code = '';
+  const chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  let code = "";
   let attempts = 0;
   do {
-    code = '';
+    code = "";
     for (let i = 0; i < 4; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
@@ -340,7 +405,7 @@ function getConnectedClientsMessage(): string {
   const list = Array.from(activeSessions);
   let res = `CLIENT_LIST|${list.length}`;
   for (const s of list) {
-    res += `|${clean(s.remoteAddress)}|${clean(s.playerName || 'Guest')}|${clean(s.playerGender || 'Unknown')}|${clean(s.getStatus())}`;
+    res += `|${clean(s.remoteAddress)}|${clean(s.playerName || "Guest")}|${clean(s.playerGender || "Unknown")}|${clean(s.getStatus())}`;
   }
   return res;
 }
@@ -352,46 +417,56 @@ class ClientSession implements IClientSession {
   type: SessionTransport;
   socket: WebSocket | TcpSocket;
   remoteAddress: string;
-  playerName: string = '';
-  playerGender: string = '';
+  playerName: string = "";
+  playerGender: string = "";
   currentRoom: IDuelRoom | null = null;
   connectedAt: number = Date.now();
   lastPing: number = Date.now();
 
-  constructor(type: SessionTransport, socket: WebSocket | TcpSocket, remoteAddress: string) {
+  constructor(
+    type: SessionTransport,
+    socket: WebSocket | TcpSocket,
+    remoteAddress: string,
+  ) {
     this.type = type;
     this.socket = socket;
-    this.remoteAddress = remoteAddress || 'Unknown';
+    this.remoteAddress = remoteAddress || "Unknown";
   }
 
   getStatus(): string {
     if (this.currentRoom) {
       if (this === this.currentRoom.hostSession) {
-        return this.currentRoom.active ? `In Duel #${this.currentRoom.code}` : `Hosting Room #${this.currentRoom.code}`;
+        return this.currentRoom.active
+          ? `In Duel #${this.currentRoom.code}`
+          : `Hosting Room #${this.currentRoom.code}`;
       } else {
         return `In Duel #${this.currentRoom.code}`;
       }
     }
-    return 'Connected in Lobby';
+    return "Connected in Lobby";
   }
 
   send(msg: string): void {
     try {
-      if (this.type === 'ws') {
+      if (this.type === "ws") {
         const ws = this.socket as WebSocket;
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(msg);
         }
-      } else if (this.type === 'tcp') {
+      } else if (this.type === "tcp") {
         const tcp = this.socket as TcpSocket;
         if (tcp && !tcp.destroyed) {
-          tcp.write(msg + '\n');
+          tcp.write(msg + "\n");
         }
       }
-      const isProbe = this.remoteAddress.startsWith('::1') || this.remoteAddress.startsWith('127.0.0.1');
-      if (!isProbe || (msg !== 'PONG' && msg !== 'OK')) {
-        const preview = msg.length > 70 ? msg.slice(0, 70) + '...' : msg;
-        console.log(`[${this.type.toUpperCase()} ${this.remoteAddress}] ⬅ SENT: ${preview}`);
+      const isProbe =
+        this.remoteAddress.startsWith("::1") ||
+        this.remoteAddress.startsWith("127.0.0.1");
+      if (!isProbe || (msg !== "PONG" && msg !== "OK")) {
+        const preview = msg.length > 70 ? msg.slice(0, 70) + "..." : msg;
+        console.log(
+          `[${this.type.toUpperCase()} ${this.remoteAddress}] ⬅ SENT: ${preview}`,
+        );
       }
     } catch (err: any) {
       console.warn(`[Session ${this.remoteAddress}] Send error:`, err.message);
@@ -400,8 +475,8 @@ class ClientSession implements IClientSession {
 
   close(): void {
     try {
-      if (this.type === 'ws') (this.socket as WebSocket).close();
-      if (this.type === 'tcp') (this.socket as TcpSocket).destroy();
+      if (this.type === "ws") (this.socket as WebSocket).close();
+      if (this.type === "tcp") (this.socket as TcpSocket).destroy();
     } catch (_) {}
   }
 
@@ -412,8 +487,10 @@ class ClientSession implements IClientSession {
       this.currentRoom = null;
       if (!room.finished) {
         room.finished = true;
-        const opponent = this === room.hostSession ? room.guestSession : room.hostSession;
-        const leftName = this === room.hostSession ? room.hostName : room.guestName;
+        const opponent =
+          this === room.hostSession ? room.guestSession : room.hostSession;
+        const leftName =
+          this === room.hostSession ? room.hostName : room.guestName;
         if (opponent) {
           opponent.send(`OPPONENT_LEFT|${clean(leftName)}`);
         }
@@ -424,84 +501,101 @@ class ClientSession implements IClientSession {
 
   handleMessage(line: string): void {
     this.lastPing = Date.now();
-    const raw = (line || '').trim();
+    const raw = (line || "").trim();
     if (!raw) return;
 
-    const p = raw.split('|');
+    const p = raw.split("|");
     const cmd = p[0];
 
-    const isProbe = this.remoteAddress.startsWith('::1') || this.remoteAddress.startsWith('127.0.0.1');
-    if (!isProbe || cmd !== 'PING') {
-      const preview = raw.length > 70 ? raw.slice(0, 70) + '...' : raw;
-      console.log(`[${this.type.toUpperCase()} ${this.remoteAddress}] ➔ RECV [${cmd}]: ${preview}`);
+    const isProbe =
+      this.remoteAddress.startsWith("::1") ||
+      this.remoteAddress.startsWith("127.0.0.1");
+    if (!isProbe || cmd !== "PING") {
+      const preview = raw.length > 70 ? raw.slice(0, 70) + "..." : raw;
+      console.log(
+        `[${this.type.toUpperCase()} ${this.remoteAddress}] ➔ RECV [${cmd}]: ${preview}`,
+      );
     }
 
     switch (cmd) {
-      case 'HELLO': {
+      case "HELLO": {
         if (p.length > 1) this.playerName = clean(p[1]);
         if (p.length > 2) this.playerGender = clean(p[2]);
-        this.send('OK');
+        this.send("OK");
         break;
       }
 
-      case 'CLIENT_LIST': {
+      case "CLIENT_LIST": {
         this.send(getConnectedClientsMessage());
         break;
       }
 
-      case 'SCORE': {
+      case "SCORE": {
         if (p.length < 3) {
-          this.send('ERROR|Invalid SCORE command.');
+          this.send("ERROR|Invalid SCORE command.");
           return;
         }
         updateScore(p[1], p[2], this.playerGender);
-        this.send('OK');
+        this.send("OK");
         break;
       }
 
-      case 'LEADERBOARD':
-      case 'BOARD': {
+      case "LEADERBOARD":
+      case "BOARD": {
         this.send(getLeaderboardMessage());
         break;
       }
 
-      case 'INFO': {
-        const dbInfo = supabase ? 'Supabase' : 'Local';
+      case "INFO": {
+        const dbInfo = supabase ? "Supabase" : "Local";
         this.send(`INFO|GoQuiz-RenderCloud|${dbInfo}|${rooms.size}`);
         break;
       }
 
-      case 'PING': {
-        this.send('PONG');
+      case "PING": {
+        this.send("PONG");
         break;
       }
 
-      case 'ROOM_CREATE': {
-        const hostName = p.length > 1 ? clean(p[1]) : 'Host';
-        const hostGender = p.length > 2 ? clean(p[2]) : 'Boy';
-        const language = p.length > 3 ? clean(p[3]) : 'HTML';
-        const difficulty = p.length > 4 ? clean(p[4]) : 'Easy';
-        const questionsPayload = p.length > 5 ? p[5] : '';
+      case "ROOM_CREATE": {
+        const hostName = p.length > 1 ? clean(p[1]) : "Host";
+        const hostGender = p.length > 2 ? clean(p[2]) : "Boy";
+        const language = p.length > 3 ? clean(p[3]) : "HTML";
+        const difficulty = p.length > 4 ? clean(p[4]) : "Easy";
+        const questionsPayload = p.length > 5 ? p[5] : "";
         this.playerName = hostName;
         this.playerGender = hostGender;
 
         const code = generateRoomCode();
-        const room = new DuelRoom(code, hostName, hostGender, language, difficulty, this);
+        const room = new DuelRoom(
+          code,
+          hostName,
+          hostGender,
+          language,
+          difficulty,
+          this,
+        );
         room.questionsPayload = questionsPayload;
         this.currentRoom = room;
         rooms.set(code, room);
 
-        console.log(`[Room] Created Room #${code} by ${hostName} (${language} - ${difficulty})`);
+        console.log(
+          `[Room] Created Room #${code} by ${hostName} (${language} - ${difficulty})`,
+        );
         this.send(`ROOM_CREATED|${code}|${language}|${difficulty}`);
         break;
       }
 
-      case 'ROOM_LIST': {
-        let resp = 'ROOM_LIST_RESP';
+      case "ROOM_LIST": {
+        let resp = "ROOM_LIST_RESP";
         for (const r of rooms.values()) {
           if (!r.active && !r.finished && !r.guestSession) {
             if (r.hostSession === this) continue;
-            if (this.playerName && this.playerName.toLowerCase() === r.hostName.toLowerCase()) continue;
+            if (
+              this.playerName &&
+              this.playerName.toLowerCase() === r.hostName.toLowerCase()
+            )
+              continue;
             resp += `|${r.code}|${clean(r.hostName)}|${clean(r.hostGender)}|${clean(r.language)}|${clean(r.difficulty)}`;
           }
         }
@@ -509,12 +603,12 @@ class ClientSession implements IClientSession {
         break;
       }
 
-      case 'ROOM_JOIN': {
+      case "ROOM_JOIN": {
         if (p.length < 4) {
-          this.send('ERROR|Invalid ROOM_JOIN command.');
+          this.send("ERROR|Invalid ROOM_JOIN command.");
           return;
         }
-        const code = (p[1] || '').trim().toUpperCase();
+        const code = (p[1] || "").trim().toUpperCase();
         const guestName = clean(p[2]);
         const guestGender = clean(p[3]);
         this.playerName = guestName;
@@ -529,8 +623,12 @@ class ClientSession implements IClientSession {
           this.send(`ERROR|Room ${code} is already full.`);
           return;
         }
-        if (room.hostSession === this || (room.hostName && room.hostName.toLowerCase() === guestName.toLowerCase())) {
-          this.send('ERROR|Host cannot join their own room.');
+        if (
+          room.hostSession === this ||
+          (room.hostName &&
+            room.hostName.toLowerCase() === guestName.toLowerCase())
+        ) {
+          this.send("ERROR|Host cannot join their own room.");
           return;
         }
 
@@ -540,19 +638,22 @@ class ClientSession implements IClientSession {
         room.active = true;
         this.currentRoom = room;
 
-        console.log(`[Duel Start] Room #${room.code}: ${room.hostName} VS ${room.guestName}`);
+        console.log(
+          `[Duel Start] Room #${room.code}: ${room.hostName} VS ${room.guestName}`,
+        );
 
-        const matchStartMsg = `MATCH_START|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}${room.questionsPayload ? `|${room.questionsPayload}` : ''}`;
+        const matchStartMsg = `MATCH_START|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}${room.questionsPayload ? `|${room.questionsPayload}` : ""}`;
         if (room.hostSession) room.hostSession.send(matchStartMsg);
         if (room.guestSession) room.guestSession.send(matchStartMsg);
         break;
       }
 
-      case 'DUEL_ACTION': {
+      case "DUEL_ACTION": {
         if (this.currentRoom && p.length >= 9) {
-          const opponent = (this === this.currentRoom.hostSession)
-            ? this.currentRoom.guestSession
-            : this.currentRoom.hostSession;
+          const opponent =
+            this === this.currentRoom.hostSession
+              ? this.currentRoom.guestSession
+              : this.currentRoom.hostSession;
 
           if (opponent) {
             const sender = p[2];
@@ -564,22 +665,27 @@ class ClientSession implements IClientSession {
             const combo = p[8];
 
             if (this === this.currentRoom.hostSession) {
-              this.currentRoom.hostScore = parseInt(score, 10) || this.currentRoom.hostScore;
+              this.currentRoom.hostScore =
+                parseInt(score, 10) || this.currentRoom.hostScore;
             } else {
-              this.currentRoom.guestScore = parseInt(score, 10) || this.currentRoom.guestScore;
+              this.currentRoom.guestScore =
+                parseInt(score, 10) || this.currentRoom.guestScore;
             }
 
-            opponent.send(`OPPONENT_UPDATE|${sender}|${qIndex}|${isCorrect}|${hp}|${maxHp}|${score}|${combo}`);
+            opponent.send(
+              `OPPONENT_UPDATE|${sender}|${qIndex}|${isCorrect}|${hp}|${maxHp}|${score}|${combo}`,
+            );
           }
         }
         break;
       }
 
-      case 'DUEL_FINISH': {
+      case "DUEL_FINISH": {
         if (this.currentRoom && p.length >= 5) {
-          const opponent = (this === this.currentRoom.hostSession)
-            ? this.currentRoom.guestSession
-            : this.currentRoom.hostSession;
+          const opponent =
+            this === this.currentRoom.hostSession
+              ? this.currentRoom.guestSession
+              : this.currentRoom.hostSession;
 
           const sender = p[2];
           const score = parseInt(p[3], 10) || 0;
@@ -600,7 +706,7 @@ class ClientSession implements IClientSession {
           // Determine winner and record to Supabase
           const hostS = this.currentRoom.hostScore;
           const guestS = this.currentRoom.guestScore;
-          let winner = 'Tie';
+          let winner = "Tie";
           if (hostS > guestS) winner = this.currentRoom.hostName;
           else if (guestS > hostS) winner = this.currentRoom.guestName;
 
@@ -609,14 +715,14 @@ class ClientSession implements IClientSession {
         break;
       }
 
-      case 'LEAVE_ROOM': {
+      case "LEAVE_ROOM": {
         this.cleanup();
-        this.send('LEFT_ROOM');
+        this.send("LEFT_ROOM");
         break;
       }
 
       default:
-        this.send('ERROR|Unknown command.');
+        this.send("ERROR|Unknown command.");
         break;
     }
   }
@@ -643,9 +749,11 @@ app.use(express.json());
 
 // Graceful JSON syntax error handler
 app.use((err: any, req: Request, res: Response, next: any) => {
-  if (err instanceof SyntaxError && 'body' in err) {
-    console.warn(`[HTTP 400] Malformed JSON in ${req.method} ${req.url}: ${err.message}`);
-    return res.status(400).json({ error: 'Malformed JSON payload' });
+  if (err instanceof SyntaxError && "body" in err) {
+    console.warn(
+      `[HTTP 400] Malformed JSON in ${req.method} ${req.url}: ${err.message}`,
+    );
+    return res.status(400).json({ error: "Malformed JSON payload" });
   }
   next(err);
 });
@@ -653,14 +761,21 @@ app.use((err: any, req: Request, res: Response, next: any) => {
 // HTTP Request Logger Middleware
 app.use((req: Request, res: Response, next) => {
   const start = Date.now();
-  const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
-  res.on('finish', () => {
+  const ip =
+    (req.headers["x-forwarded-for"] as string) ||
+    req.socket.remoteAddress ||
+    "unknown";
+  res.on("finish", () => {
     const duration = Date.now() - start;
     const status = res.statusCode;
     const method = req.method;
     const url = req.originalUrl || req.url;
     // Suppress spamming console on automated background self-pings
-    if (url.startsWith('/api/keep-alive') || url === '/ping' || url === '/health') {
+    if (
+      url.startsWith("/api/keep-alive") ||
+      url === "/ping" ||
+      url === "/health"
+    ) {
       return;
     }
     console.log(`[HTTP ${method}] ${url} -> ${status} (${duration}ms) [${ip}]`);
@@ -672,90 +787,102 @@ app.use((req: Request, res: Response, next) => {
 let lastKeepAlivePing: number = Date.now();
 let keepAliveCount: number = 0;
 
-app.get(['/api/keep-alive', '/ping'], (req: Request, res: Response) => {
+app.get(["/api/keep-alive", "/ping"], (req: Request, res: Response) => {
   lastKeepAlivePing = Date.now();
   keepAliveCount++;
-  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'cron';
-  console.log(`[KeepAlive] Ping received #${keepAliveCount} from ${clientIp} (${new Date().toLocaleTimeString()})`);
+  const clientIp =
+    (req.headers["x-forwarded-for"] as string) ||
+    req.socket.remoteAddress ||
+    "cron";
+  console.log(
+    `[KeepAlive] Ping received #${keepAliveCount} from ${clientIp} (${new Date().toLocaleTimeString()})`,
+  );
 
   const responsePayload: KeepAliveResponse = {
-    status: 'awake',
-    message: 'GoQuiz Adventure server is awake and active! Render sleep prevented.',
+    status: "awake",
+    message:
+      "GoQuiz Adventure server is awake and active! Render sleep prevented.",
     pingCount: keepAliveCount,
     uptimeSeconds: Math.floor(process.uptime()),
-    database: supabase ? 'Supabase PostgreSQL' : 'Local Disk Backup',
+    database: supabase ? "Supabase PostgreSQL" : "Local Disk Backup",
     activeRooms: rooms.size,
     connectedPlayers: activeSessions.size,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 
   res.status(200).json(responsePayload);
 });
 
 // Health Check Endpoint (For Render monitoring & pingers)
-app.get('/health', (req: Request, res: Response) => {
+app.get("/health", (req: Request, res: Response) => {
   res.json({
-    status: 'ok',
-    service: 'GoQuiz Global Multiplayer Gateway',
-    database: supabase ? 'Supabase PostgreSQL' : 'Local Disk Backup',
+    status: "ok",
+    service: "GoQuiz Global Multiplayer Gateway",
+    database: supabase ? "Supabase PostgreSQL" : "Local Disk Backup",
     uptimeSeconds: Math.floor(process.uptime()),
     activeRooms: rooms.size,
     connectedPlayers: activeSessions.size,
     keepAlivePings: keepAliveCount,
     lastKeepAliveAt: new Date(lastKeepAlivePing).toISOString(),
     totalDuelsCompleted,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
 // REST Leaderboard Endpoints
-app.get('/api/leaderboard', (req: Request, res: Response) => {
-  if (req.query.format === 'raw') {
-    res.type('text/plain').send(getLeaderboardMessage());
+app.get("/api/leaderboard", (req: Request, res: Response) => {
+  if (req.query.format === "raw") {
+    res.type("text/plain").send(getLeaderboardMessage());
     return;
   }
   const sorted = getSortedLeaderboard();
   res.json({
     total: sorted.length,
-    database: supabase ? 'Supabase' : 'Local',
+    database: supabase ? "Supabase" : "Local",
     leaderboard: sorted.map((entry, index) => ({
       rank: index + 1,
       name: entry.name,
       score: entry.score,
-      gender: entry.gender
-    }))
+      gender: entry.gender,
+    })),
   });
 });
 
-app.post('/api/score', async (req: Request, res: Response) => {
+app.post("/api/score", async (req: Request, res: Response) => {
   const { name, score, gender } = req.body || {};
   if (!name || score === undefined) {
-    res.status(400).json({ error: 'Missing name or score' });
+    res.status(400).json({ error: "Missing name or score" });
     return;
   }
   await updateScore(name, score, gender);
-  res.json({ success: true, name, score: leaderboard.get(clean(name))?.score || score });
+  res.json({
+    success: true,
+    name,
+    score: leaderboard.get(clean(name))?.score || score,
+  });
 });
 
 // Active Open Rooms Endpoint
-app.get('/api/rooms', (req: Request, res: Response) => {
+app.get("/api/rooms", (req: Request, res: Response) => {
   const format = req.query.format as string;
-  console.log(`[API] GET /api/rooms (format=${format || 'json'}, activeRooms=${rooms.size})`);
-  
-  if (format === 'raw') {
-    let resp = 'ROOM_LIST_RESP';
+  console.log(
+    `[API] GET /api/rooms (format=${format || "json"}, activeRooms=${rooms.size})`,
+  );
+
+  if (format === "raw") {
+    let resp = "ROOM_LIST_RESP";
     for (const r of rooms.values()) {
-      if (!r.finished && !r.guestSession) {
-        resp += `|${r.code}|${clean(r.hostName)}|${clean(r.hostGender)}|${clean(r.language)}|${clean(r.difficulty)}`;
+      if (!r.finished && !r.guestSession && !r.guestName && !r.active) {
+        resp += `|${r.code}|${clean(r.hostName)}|${clean(r.hostGender)}|${clean(r.language)}|${clean(r.difficulty)}|${clean(r.hostClientId)}`;
       }
     }
-    res.type('text/plain').send(resp);
+    res.type("text/plain").send(resp);
     return;
   }
 
   const roomList: RoomSummary[] = [];
   for (const r of rooms.values()) {
-    if (!r.finished) {
+    if (!r.finished && !r.guestSession && !r.guestName && !r.active) {
       roomList.push({
         code: r.code,
         hostName: r.hostName,
@@ -763,8 +890,8 @@ app.get('/api/rooms', (req: Request, res: Response) => {
         language: r.language,
         difficulty: r.difficulty,
         active: r.active,
-        waiting: !r.guestSession,
-        createdAt: r.createdAt
+        waiting: true,
+        createdAt: r.createdAt,
       });
     }
   }
@@ -772,27 +899,38 @@ app.get('/api/rooms', (req: Request, res: Response) => {
 });
 
 // Create Room via REST
-app.post('/api/room/create', (req: Request, res: Response) => {
-  const { hostName, hostGender, language, difficulty, questionsPayload } = req.body || {};
+app.post("/api/room/create", (req: Request, res: Response) => {
+  const { hostName, hostGender, language, difficulty, questionsPayload, hostClientId } =
+    req.body || {};
   const code = generateRoomCode();
   const room = new DuelRoom(
     code,
-    clean(hostName || 'Host'),
-    clean(hostGender || 'Boy'),
-    clean(language || 'HTML'),
-    clean(difficulty || 'Easy'),
-    null as any
+    clean(hostName || "Host"),
+    clean(hostGender || "Boy"),
+    clean(language || "HTML"),
+    clean(difficulty || "Easy"),
+    null as any,
   );
-  room.questionsPayload = questionsPayload || '';
+  room.questionsPayload = questionsPayload || "";
+  room.hostClientId = String(hostClientId || "");
   rooms.set(code, room);
-  console.log(`[Room REST] Created Room #${code} by ${hostName} (${language} - ${difficulty})`);
-  res.json({ success: true, code, language: room.language, difficulty: room.difficulty });
+  console.log(
+    `[Room REST] Created Room #${code} by ${hostName} (${language} - ${difficulty}) [hostClient: ${room.hostClientId}]`,
+  );
+  res.json({
+    success: true,
+    code,
+    language: room.language,
+    difficulty: room.difficulty,
+  });
 });
 
 // Lookup Room Details by Code
-app.get('/api/room/:code', (req: Request, res: Response) => {
+app.get("/api/room/:code", (req: Request, res: Response) => {
   const paramCode = req.params.code;
-  const code = (Array.isArray(paramCode) ? paramCode[0] : (paramCode || '')).trim().toUpperCase();
+  const code = (Array.isArray(paramCode) ? paramCode[0] : paramCode || "")
+    .trim()
+    .toUpperCase();
   console.log(`[API] GET /api/room/${code}`);
   const room = rooms.get(code);
   if (!room || room.finished) {
@@ -806,16 +944,18 @@ app.get('/api/room/:code', (req: Request, res: Response) => {
     language: room.language,
     difficulty: room.difficulty,
     active: room.active,
-    waiting: !room.guestSession && !room.guestName
+    waiting: !room.guestSession && !room.guestName,
   });
 });
 
 // Join Room via REST (Cloud Relay)
-app.post('/api/room/join', (req: Request, res: Response) => {
-  const { code, guestName, guestGender } = req.body || {};
-  const cleanCode = String(code || '').trim().toUpperCase();
-  const cleanGuest = clean(guestName || 'Challenger');
-  const cleanGender = clean(guestGender || 'Boy');
+app.post("/api/room/join", (req: Request, res: Response) => {
+  const { code, guestName, guestGender, guestClientId } = req.body || {};
+  const cleanCode = String(code || "")
+    .trim()
+    .toUpperCase();
+  const cleanGuest = clean(guestName || "Challenger");
+  const cleanGender = clean(guestGender || "Boy");
   const room = rooms.get(cleanCode);
 
   if (!room || room.finished) {
@@ -826,19 +966,24 @@ app.post('/api/room/join', (req: Request, res: Response) => {
     res.status(400).json({ error: `Room #${cleanCode} is already full` });
     return;
   }
+  if (guestClientId && room.hostClientId && String(guestClientId) === String(room.hostClientId)) {
+    res.status(400).json({ error: `You are hosting Room #${cleanCode}. Waiting for another player to challenge you!` });
+    return;
+  }
 
   room.guestName = cleanGuest;
   room.guestGender = cleanGender;
+  room.guestClientId = String(guestClientId || "");
   room.active = true;
 
-  const matchStartMsg = `MATCH_START|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}${room.questionsPayload ? `|${room.questionsPayload}` : ''}`;
+  const matchStartMsg = `MATCH_START|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}${room.questionsPayload ? `|${room.questionsPayload}` : ""}`;
 
-  // Notify Host
-  room.pushEvent('host', matchStartMsg);
-  // Also queue for Guest poll
-  room.pushEvent('guest', matchStartMsg);
+  // Notify Host via poll
+  room.pushEvent("host", matchStartMsg);
 
-  console.log(`[Duel Start REST] Room #${room.code}: ${room.hostName} VS ${room.guestName}`);
+  console.log(
+    `[Duel Start REST] Room #${room.code}: ${room.hostName} VS ${room.guestName}`,
+  );
   res.json({
     success: true,
     code: room.code,
@@ -850,14 +995,16 @@ app.post('/api/room/join', (req: Request, res: Response) => {
     difficulty: room.difficulty,
     seed: room.seed,
     questionsPayload: room.questionsPayload,
-    matchStartMsg
+    matchStartMsg,
   });
 });
 
 // Relay In-Game Action (Score updates, question answers, completion)
-app.post('/api/room/:code/action', (req: Request, res: Response) => {
+app.post("/api/room/:code/action", (req: Request, res: Response) => {
   const paramCode = req.params.code;
-  const code = (Array.isArray(paramCode) ? paramCode[0] : (paramCode || '')).trim().toUpperCase();
+  const code = (Array.isArray(paramCode) ? paramCode[0] : paramCode || "")
+    .trim()
+    .toUpperCase();
   const { role, message } = req.body || {};
   const room = rooms.get(code);
 
@@ -866,15 +1013,15 @@ app.post('/api/room/:code/action', (req: Request, res: Response) => {
     return;
   }
 
-  const targetRole = role === 'host' ? 'guest' : 'host';
+  const targetRole = role === "host" ? "guest" : "host";
   room.pushEvent(targetRole, message);
 
   // Track match score if updating
-  if (typeof message === 'string' && message.startsWith('OPPONENT_UPDATE')) {
-    const parts = message.split('|');
+  if (typeof message === "string" && message.startsWith("OPPONENT_UPDATE")) {
+    const parts = message.split("|");
     if (parts.length >= 8) {
       const score = parseInt(parts[6], 10) || 0;
-      if (role === 'host') room.hostScore = Math.max(room.hostScore, score);
+      if (role === "host") room.hostScore = Math.max(room.hostScore, score);
       else room.guestScore = Math.max(room.guestScore, score);
     }
   }
@@ -883,19 +1030,23 @@ app.post('/api/room/:code/action', (req: Request, res: Response) => {
 });
 
 // Long-Poll Endpoint for In-Game Events
-app.get('/api/room/:code/poll', (req: Request, res: Response) => {
+app.get("/api/room/:code/poll", (req: Request, res: Response) => {
   const paramCode = req.params.code;
-  const code = (Array.isArray(paramCode) ? paramCode[0] : (paramCode || '')).trim().toUpperCase();
-  const role = req.query.role === 'guest' ? 'guest' : 'host';
+  const code = (Array.isArray(paramCode) ? paramCode[0] : paramCode || "")
+    .trim()
+    .toUpperCase();
+  const role = req.query.role === "guest" ? "guest" : "host";
   const room = rooms.get(code);
 
   if (!room || room.finished) {
-    res.status(404).json({ error: `Room #${code} closed`, closed: true, events: [] });
+    res
+      .status(404)
+      .json({ error: `Room #${code} closed`, closed: true, events: [] });
     return;
   }
 
-  const queue = role === 'host' ? room.hostEvents : room.guestEvents;
-  if (role === 'host') room.lastHostPing = Date.now();
+  const queue = role === "host" ? room.hostEvents : room.guestEvents;
+  if (role === "host") room.lastHostPing = Date.now();
   else room.lastGuestPing = Date.now();
 
   // If there are already queued events, return them immediately
@@ -913,60 +1064,76 @@ app.get('/api/room/:code/poll', (req: Request, res: Response) => {
     res.json({ events: evts });
   };
 
-  if (role === 'host') room.hostPollResolver = resolver;
+  if (role === "host") room.hostPollResolver = resolver;
   else room.guestPollResolver = resolver;
 
   timer = setTimeout(() => {
-    if (role === 'host' && room.hostPollResolver === resolver) room.hostPollResolver = null;
-    if (role === 'guest' && room.guestPollResolver === resolver) room.guestPollResolver = null;
+    if (role === "host" && room.hostPollResolver === resolver)
+      room.hostPollResolver = null;
+    if (role === "guest" && room.guestPollResolver === resolver)
+      room.guestPollResolver = null;
     res.json({ events: [] });
   }, 3500);
 });
 
 // Leave / Forfeit Room via REST
-app.post('/api/room/:code/leave', (req: Request, res: Response) => {
+app.post("/api/room/:code/leave", (req: Request, res: Response) => {
   const paramCode = req.params.code;
-  const code = (Array.isArray(paramCode) ? paramCode[0] : (paramCode || '')).trim().toUpperCase();
+  const code = (Array.isArray(paramCode) ? paramCode[0] : paramCode || "")
+    .trim()
+    .toUpperCase();
   const { role, name } = req.body || {};
   const room = rooms.get(code);
 
   if (room && !room.finished) {
     room.finished = true;
-    const targetRole = role === 'host' ? 'guest' : 'host';
-    room.pushEvent(targetRole, `OPPONENT_LEFT|${clean(name || 'Opponent')}`);
+    const targetRole = role === "host" ? "guest" : "host";
+    room.pushEvent(targetRole, `OPPONENT_LEFT|${clean(name || "Opponent")}`);
   }
   res.json({ success: true });
 });
 
-
 // Stats summary
-app.get('/api/stats', (req: Request, res: Response) => {
+app.get("/api/stats", (req: Request, res: Response) => {
   res.json({
     playersOnline: activeSessions.size,
     activeRooms: rooms.size,
     leaderboardEntries: leaderboard.size,
     totalDuelsCompleted,
-    database: supabase ? 'Supabase PostgreSQL' : 'Local Fallback',
-    memoryUsageMB: Math.round(process.memoryUsage().rss / (1024 * 1024))
+    database: supabase ? "Supabase PostgreSQL" : "Local Fallback",
+    memoryUsageMB: Math.round(process.memoryUsage().rss / (1024 * 1024)),
   });
 });
 
 // Restricted Console / Terminal Theme Interface
-app.get('/', (req: Request, res: Response) => {
+app.get("/", (req: Request, res: Response) => {
   const sorted = getSortedLeaderboard().slice(0, 10);
-  const openRooms = Array.from(rooms.values()).filter(r => !r.finished);
+  const openRooms = Array.from(rooms.values()).filter((r) => !r.finished);
 
-  const leaderboardRows = sorted.length > 0 ? sorted.map((entry, i) => {
-    const rankStr = String(i + 1).padStart(2, '0');
-    const nameStr = clean(entry.name).padEnd(16, ' ').slice(0, 16);
-    const scoreStr = `${entry.score.toLocaleString()} pts`.padStart(10, ' ');
-    return `[${rankStr}]  ${nameStr}  ${scoreStr}  (${entry.gender})`;
-  }).join('\n') : '[--]  No entries recorded in database yet.';
+  const leaderboardRows =
+    sorted.length > 0
+      ? sorted
+          .map((entry, i) => {
+            const rankStr = String(i + 1).padStart(2, "0");
+            const nameStr = clean(entry.name).padEnd(16, " ").slice(0, 16);
+            const scoreStr = `${entry.score.toLocaleString()} pts`.padStart(
+              10,
+              " ",
+            );
+            return `[${rankStr}]  ${nameStr}  ${scoreStr}  (${entry.gender})`;
+          })
+          .join("\n")
+      : "[--]  No entries recorded in database yet.";
 
-  const roomsListText = openRooms.length > 0 ? openRooms.map(r => {
-    const status = r.active ? 'IN_MATCH' : 'WAITING';
-    return `> ROOM #${r.code.padEnd(5, ' ')} HOST: ${clean(r.hostName).padEnd(12, ' ')} LANG: ${r.language.padEnd(10, ' ')} DIFF: ${r.difficulty.padEnd(8, ' ')} [${status}]`;
-  }).join('\n') : '> No active rooms currently open on this node.';
+  const roomsListText =
+    openRooms.length > 0
+      ? openRooms
+          .map((r) => {
+            const status = r.active ? "IN_MATCH" : "WAITING";
+            return `> ROOM #${r.code.padEnd(5, " ")} HOST: ${clean(r.hostName).padEnd(12, " ")} LANG: ${r.language.padEnd(10, " ")} DIFF: ${r.difficulty.padEnd(8, " ")} [${status}]`;
+          })
+          .join("\n")
+      : "> No active rooms currently open on this node.";
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1236,7 +1403,7 @@ app.get('/', (req: Request, res: Response) => {
           </div>
           <div class="status-card">
             <div class="status-label">Database Store</div>
-            <div class="status-value cyan">${supabase ? 'SUPABASE POSTGRESQL' : 'LOCAL CACHE'}</div>
+            <div class="status-value cyan">${supabase ? "SUPABASE POSTGRESQL" : "LOCAL CACHE"}</div>
           </div>
           <div class="status-card">
             <div class="status-label">Live Sockets</div>
@@ -1364,7 +1531,7 @@ ${leaderboardRows}</div>
 </body>
 </html>`;
 
-  res.type('text/html').send(html);
+  res.type("text/html").send(html);
 });
 
 // ==========================================
@@ -1375,13 +1542,18 @@ const server: HttpServer = createServer(app);
 // WebSocket Server attached to HTTP server (Required for Render)
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', (ws: WebSocket, req: any) => {
-  const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'Unknown';
-  const session = new ClientSession('ws', ws, ip);
+wss.on("connection", (ws: WebSocket, req: any) => {
+  const ip =
+    (req.headers["x-forwarded-for"] as string) ||
+    req.socket.remoteAddress ||
+    "Unknown";
+  const session = new ClientSession("ws", ws, ip);
   activeSessions.add(session);
-  console.log(`[WS] Client connected from ${ip} (Total active: ${activeSessions.size})`);
+  console.log(
+    `[WS] Client connected from ${ip} (Total active: ${activeSessions.size})`,
+  );
 
-  ws.on('message', (data: RawData) => {
+  ws.on("message", (data: RawData) => {
     try {
       const text = data.toString();
       session.handleMessage(text);
@@ -1390,80 +1562,99 @@ wss.on('connection', (ws: WebSocket, req: any) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on("close", () => {
     console.log(`[WS] Client disconnected: ${ip}`);
     session.cleanup();
   });
 
-  ws.on('error', (err: Error) => {
+  ws.on("error", (err: Error) => {
     console.warn(`[WS ${ip}] Socket error:`, err.message);
   });
 });
 
 // Start HTTP Server
 server.listen(HTTP_PORT, () => {
-  console.log('====================================================');
+  console.log("====================================================");
   console.log(`  GoQuiz Adventure — Global Multiplayer Cloud Server`);
-  console.log('====================================================');
+  console.log("====================================================");
   console.log(`[HTTP/WS] Server listening on port ${HTTP_PORT}`);
   console.log(`[HTTP/WS] Public Dashboard: http://localhost:${HTTP_PORT}`);
   console.log(`[HTTP/WS] WebSocket endpoint: ws://localhost:${HTTP_PORT}`);
-  console.log(`[Storage] Mode: ${supabase ? 'Supabase PostgreSQL' : 'Local Disk Backup'}`);
-  console.log(`[KeepAlive] Endpoint active: http://localhost:${HTTP_PORT}/api/keep-alive`);
+  console.log(
+    `[Storage] Mode: ${supabase ? "Supabase PostgreSQL" : "Local Disk Backup"}`,
+  );
+  console.log(
+    `[KeepAlive] Endpoint active: http://localhost:${HTTP_PORT}/api/keep-alive`,
+  );
 
   // Render Anti-Sleep Automated Self-Pinger
-  const selfPingTarget = process.env.RENDER_EXTERNAL_URL || process.env.SELF_PING_URL || '';
+  const selfPingTarget =
+    process.env.RENDER_EXTERNAL_URL || process.env.SELF_PING_URL || "";
   if (selfPingTarget) {
-    const intervalMinutes = Math.max(3, Math.min(14, parseInt(process.env.SELF_PING_INTERVAL_MINUTES || '10', 10)));
-    const pingUrl = `${selfPingTarget.replace(/\/$/, '')}/api/keep-alive`;
-    console.log(`[KeepAlive] Automated self-pinger initialized for ${pingUrl} (every ${intervalMinutes} mins)`);
+    const intervalMinutes = Math.max(
+      3,
+      Math.min(
+        14,
+        parseInt(process.env.SELF_PING_INTERVAL_MINUTES || "10", 10),
+      ),
+    );
+    const pingUrl = `${selfPingTarget.replace(/\/$/, "")}/api/keep-alive`;
+    console.log(
+      `[KeepAlive] Automated self-pinger initialized for ${pingUrl} (every ${intervalMinutes} mins)`,
+    );
 
-    setInterval(async () => {
-      try {
-        const res = await fetch(pingUrl, {
-          headers: { 'User-Agent': 'GoQuiz-AntiSleep-SelfPinger/1.0' }
-        });
-        if (res.ok) {
-          console.log(`[KeepAlive] Automated self-ping SUCCESS at ${new Date().toLocaleTimeString()} (Server kept awake)`);
+    setInterval(
+      async () => {
+        try {
+          const res = await fetch(pingUrl, {
+            headers: { "User-Agent": "GoQuiz-AntiSleep-SelfPinger/1.0" },
+          });
+          if (res.ok) {
+            console.log(
+              `[KeepAlive] Automated self-ping SUCCESS at ${new Date().toLocaleTimeString()} (Server kept awake)`,
+            );
+          }
+        } catch (err: any) {
+          console.warn(`[KeepAlive] Automated self-ping error:`, err.message);
         }
-      } catch (err: any) {
-        console.warn(`[KeepAlive] Automated self-ping error:`, err.message);
-      }
-    }, intervalMinutes * 60 * 1000);
+      },
+      intervalMinutes * 60 * 1000,
+    );
   }
 });
 
 // Optional: Start raw TCP Socket Server if running locally or on a VPS with open TCP ports
-if (process.env.ENABLE_TCP !== 'false' && TCP_PORT !== HTTP_PORT) {
+if (process.env.ENABLE_TCP !== "false" && TCP_PORT !== HTTP_PORT) {
   try {
     const tcpServer: TcpServer = net.createServer((socket: TcpSocket) => {
-      const isLocalProbe = socket.remoteAddress === '::1' || socket.remoteAddress === '127.0.0.1';
+      const isLocalProbe =
+        socket.remoteAddress === "::1" || socket.remoteAddress === "127.0.0.1";
       const ip = `${socket.remoteAddress}:${socket.remotePort}`;
-      const session = new ClientSession('tcp', socket, ip);
+      const session = new ClientSession("tcp", socket, ip);
       activeSessions.add(session);
       if (!isLocalProbe) {
         console.log(`[TCP] Client connected from ${ip}`);
       }
 
-      let buffer = '';
-      socket.on('data', (chunk: Buffer) => {
-        buffer += chunk.toString('utf-8');
+      let buffer = "";
+      socket.on("data", (chunk: Buffer) => {
+        buffer += chunk.toString("utf-8");
         const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() || '';
+        buffer = lines.pop() || "";
         for (const line of lines) {
           session.handleMessage(line);
         }
       });
 
-      socket.on('close', () => {
+      socket.on("close", () => {
         if (!isLocalProbe) {
           console.log(`[TCP] Client disconnected: ${ip}`);
         }
         session.cleanup();
       });
 
-      socket.on('error', (err: any) => {
-        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') {
+      socket.on("error", (err: any) => {
+        if (err.code === "ECONNRESET" || err.code === "EPIPE") {
           // Silent for port probes / abrupt TCP drop
           return;
         }
@@ -1475,6 +1666,6 @@ if (process.env.ENABLE_TCP !== 'false' && TCP_PORT !== HTTP_PORT) {
       console.log(`[TCP] Raw socket server listening on port ${TCP_PORT}`);
     });
   } catch (err: any) {
-    console.warn('[TCP] Could not start TCP listener:', err.message);
+    console.warn("[TCP] Could not start TCP listener:", err.message);
   }
 }

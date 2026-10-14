@@ -91,6 +91,7 @@ public class QuizGame extends JFrame {
     private boolean onlineAutoConnect = true;
     private String leaderboardMode = "ONLINE";
     private String cloudServerUrl = "https://goquizandroid.onrender.com";
+    private static final String CLIENT_INSTANCE_ID = java.util.UUID.randomUUID().toString().substring(0, 8);
 
     // The computer running the game can automatically host the shared leaderboard.
     // Other devices can connect to this computer using its LAN IP address.
@@ -4003,7 +4004,7 @@ public class QuizGame extends JFrame {
         // Cloud REST Relay Constructor
         DuelClient(String cloudBaseUrl, String roomCode, String cloudRole) {
             this.isCloud = true;
-            this.myName = studentName.isEmpty() ? "Player" : studentName;
+            this.myName = studentName.isEmpty() ? "Adventurer" : studentName;
             this.myGender = getGenderFolder();
             this.cloudBaseUrl = cloudBaseUrl.endsWith("/") ? cloudBaseUrl.substring(0, cloudBaseUrl.length() - 1) : cloudBaseUrl;
             this.code = roomCode;
@@ -4012,13 +4013,16 @@ public class QuizGame extends JFrame {
             cloudPollThread = new Thread(() -> {
                 System.out.println("[QuizDesktopCloud] Started event poll for #" + roomCode + " (" + cloudRole + ")");
                 while (!closed) {
+                    HttpURLConnection conn = null;
                     try {
                         String ep = this.cloudBaseUrl + "/api/room/" + this.code + "/poll?role=" + this.cloudRole;
                         URL u = new URL(ep);
-                        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-                        conn.setConnectTimeout(6000);
-                        conn.setReadTimeout(6000);
-                        if (conn.getResponseCode() == 200) {
+                        conn = (HttpURLConnection) u.openConnection();
+                        conn.setRequestProperty("Connection", "close");
+                        conn.setConnectTimeout(8000);
+                        conn.setReadTimeout(8000);
+                        int rc = conn.getResponseCode();
+                        if (rc == 200) {
                             BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
                             StringBuilder sb = new StringBuilder();
                             String line;
@@ -4037,11 +4041,16 @@ public class QuizGame extends JFrame {
                                     }
                                 }
                             }
-                        } else if (conn.getResponseCode() == 404) {
+                        } else if (rc == 404) {
+                            System.out.println("[QuizDesktopCloud] Room #" + roomCode + " closed on server.");
                             break;
                         }
                     } catch (Exception ex) {
                         try { Thread.sleep(400); } catch (Exception ignored) {}
+                    } finally {
+                        if (conn != null) {
+                            try { conn.disconnect(); } catch (Exception ignored) {}
+                        }
                     }
                 }
                 System.out.println("[QuizDesktopCloud] Poll thread stopped for #" + roomCode);
@@ -4053,13 +4062,15 @@ public class QuizGame extends JFrame {
         synchronized void send(String msg) {
             if (isCloud) {
                 new Thread(() -> {
+                    HttpURLConnection conn = null;
                     try {
                         String ep = cloudBaseUrl + "/api/room/" + code + "/action";
                         URL u = new URL(ep);
-                        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                        conn = (HttpURLConnection) u.openConnection();
                         conn.setRequestMethod("POST");
-                        conn.setConnectTimeout(4000);
-                        conn.setReadTimeout(4000);
+                        conn.setRequestProperty("Connection", "close");
+                        conn.setConnectTimeout(5000);
+                        conn.setReadTimeout(5000);
                         conn.setDoOutput(true);
                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                         String payload = String.format("{\"role\":\"%s\",\"message\":\"%s\"}",
@@ -4071,6 +4082,10 @@ public class QuizGame extends JFrame {
                         conn.getResponseCode();
                     } catch (Exception ex) {
                         System.out.println("[QuizDesktopCloud] Action send error: " + ex.getMessage());
+                    } finally {
+                        if (conn != null) {
+                            try { conn.disconnect(); } catch (Exception ignored) {}
+                        }
                     }
                 }).start();
                 return;
@@ -4089,13 +4104,15 @@ public class QuizGame extends JFrame {
             closed = true;
             if (isCloud) {
                 new Thread(() -> {
+                    HttpURLConnection conn = null;
                     try {
                         String ep = cloudBaseUrl + "/api/room/" + code + "/leave";
                         URL u = new URL(ep);
-                        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                        conn = (HttpURLConnection) u.openConnection();
                         conn.setRequestMethod("POST");
-                        conn.setConnectTimeout(3000);
-                        conn.setReadTimeout(3000);
+                        conn.setRequestProperty("Connection", "close");
+                        conn.setConnectTimeout(4000);
+                        conn.setReadTimeout(4000);
                         conn.setDoOutput(true);
                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                         String payload = String.format("{\"role\":\"%s\",\"name\":\"%s\"}",
@@ -4105,7 +4122,12 @@ public class QuizGame extends JFrame {
                             os.write(payload.getBytes(StandardCharsets.UTF_8));
                         }
                         conn.getResponseCode();
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    } finally {
+                        if (conn != null) {
+                            try { conn.disconnect(); } catch (Exception ignored) {}
+                        }
+                    }
                 }).start();
                 return;
             }
@@ -5098,6 +5120,9 @@ public class QuizGame extends JFrame {
                 } else {
                     for (String[] r : cachedCloudRooms) {
                         String rCode = r[0];
+                        if (activeDuelClient != null && !activeDuelClient.closed && activeDuelClient.code != null && activeDuelClient.code.equalsIgnoreCase(rCode)) {
+                            continue;
+                        }
                         String rHost = r[1];
                         String rGen = r[2];
                         String rLang = r[3];
@@ -5176,6 +5201,9 @@ public class QuizGame extends JFrame {
                 } else {
                     for (String[] r : cachedLanRoomsList) {
                         String rCode = r[0];
+                        if (activeDuelClient != null && !activeDuelClient.closed && activeDuelClient.code != null && activeDuelClient.code.equalsIgnoreCase(rCode)) {
+                            continue;
+                        }
                         String rHost = r[1];
                         String rGen = r[2];
                         String rLang = r[3];
@@ -5246,11 +5274,13 @@ public class QuizGame extends JFrame {
                 if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
                 String ep = baseUrl.endsWith("/") ? baseUrl + "api/rooms?format=raw" : baseUrl + "/api/rooms?format=raw";
                 System.out.println("[QuizDesktop] Fetching global rooms from: " + ep);
+                HttpURLConnection conn = null;
                 try {
                     URL u = new URL(ep);
-                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-                    conn.setConnectTimeout(4500);
-                    conn.setReadTimeout(4500);
+                    conn = (HttpURLConnection) u.openConnection();
+                    conn.setRequestProperty("Connection", "close");
+                    conn.setConnectTimeout(6000);
+                    conn.setReadTimeout(6000);
                     int rc = conn.getResponseCode();
                     long elapsed = System.currentTimeMillis() - startMs;
                     if (rc == 200) {
@@ -5273,6 +5303,8 @@ public class QuizGame extends JFrame {
                 } catch (Exception ex) {
                     long elapsed = System.currentTimeMillis() - startMs;
                     System.out.println("[QuizDesktop] Global rooms request failed after " + elapsed + "ms: " + ex.getMessage());
+                } finally {
+                    if (conn != null) conn.disconnect();
                 }
                 SwingUtilities.invokeLater(renderRoomsList);
             }, "QuizDesktopCloudRoomsScan").start();
@@ -5346,15 +5378,18 @@ public class QuizGame extends JFrame {
                 String qPayload = serializeDuelQuestions(qs);
 
                 String gCode = null;
+                HttpURLConnection conn = null;
                 try {
                     URL u = new URL(ep);
-                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn = (HttpURLConnection) u.openConnection();
                     conn.setRequestMethod("POST");
-                    conn.setConnectTimeout(5000);
-                    conn.setReadTimeout(5000);
+                    conn.setRequestProperty("Connection", "close");
+                    conn.setConnectTimeout(8000);
+                    conn.setReadTimeout(8000);
                     conn.setDoOutput(true);
                     conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                    String payload = String.format("{\"hostName\":\"%s\",\"hostGender\":\"%s\",\"language\":\"%s\",\"difficulty\":\"%s\",\"questionsPayload\":\"%s\"}",
+                    String payload = String.format("{\"hostClientId\":\"%s\",\"hostName\":\"%s\",\"hostGender\":\"%s\",\"language\":\"%s\",\"difficulty\":\"%s\",\"questionsPayload\":\"%s\"}",
+                            escapeJson(CLIENT_INSTANCE_ID),
                             escapeJson(studentName.isEmpty() ? "Adventurer" : studentName),
                             escapeJson(studentGender.isEmpty() ? "Boy" : studentGender),
                             escapeJson(sLang),
@@ -5372,7 +5407,10 @@ public class QuizGame extends JFrame {
                         java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"code\"\\s*:\\s*\"([^\"]+)\"").matcher(sb.toString());
                         if (m.find()) gCode = m.group(1);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                } finally {
+                    if (conn != null) conn.disconnect();
+                }
 
                 long elapsed = System.currentTimeMillis() - startMs;
                 final String finalCode = gCode != null ? gCode : "G" + (100 + (int)(Math.random() * 899));
@@ -5390,9 +5428,9 @@ public class QuizGame extends JFrame {
                     waitingCodeLbl.setText("ROOM CODE: " + finalCode);
                     waitingMsg.setText("🌐 GLOBAL CLOUD ROOM • Share this 4-letter code with your opponent worldwide!");
                     waitingCard.setVisible(true);
-                    statusLabel.setText("★ [GLOBAL HOST ACTIVE] • Room #" + finalCode + " published to Cloud Gateway — Waiting for opponent...");
+                    statusLabel.setText("★ [GLOBAL HOST ACTIVE] • Room #" + finalCode + " published to Cloud Gateway — Waiting for challenger...");
                     statusLabel.setForeground(new Color(130, 205, 255));
-                    JOptionPane.showMessageDialog(this, "Global Duel Room #" + finalCode + " Created!\nShare this 4-letter code with your opponent worldwide.\n\nThe match will launch automatically when your opponent joins!", "Global Room Created", JOptionPane.INFORMATION_MESSAGE);
+                    selectTab.accept(0);
                 });
             }, "QuizDesktopGlobalHost").start();
         } else {
@@ -5432,8 +5470,14 @@ public class QuizGame extends JFrame {
             return;
         }
 
+        if (activeDuelClient != null && !activeDuelClient.closed && activeDuelClient.code != null && activeDuelClient.code.equalsIgnoreCase(code)) {
+            JOptionPane.showMessageDialog(this, "You are currently hosting Room #" + code.toUpperCase() + "!\n\nPlease wait for another player or challenger to join your match.", "Hosting Active Room", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
         boolean hasLetters = code.matches(".*[a-zA-Z].*");
-        if (hasLetters) {
+        boolean isGlobalFilter = "GLOBAL".equals(roomFilter[0]);
+        if (hasLetters || isGlobalFilter) {
             statusLabel.setText("● Joining Global Cloud Room #" + code.toUpperCase() + "...");
             statusLabel.setForeground(new Color(130, 205, 255));
             new Thread(() -> {
@@ -5443,16 +5487,19 @@ public class QuizGame extends JFrame {
                 final String baseUrl = bUrl;
                 String ep = baseUrl.endsWith("/") ? baseUrl + "api/room/join" : baseUrl + "/api/room/join";
                 System.out.println("[QuizDesktop] Joining global room #" + code.toUpperCase() + " on: " + ep);
+                HttpURLConnection conn = null;
                 try {
                     URL u = new URL(ep);
-                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn = (HttpURLConnection) u.openConnection();
                     conn.setRequestMethod("POST");
-                    conn.setConnectTimeout(6000);
-                    conn.setReadTimeout(6000);
+                    conn.setRequestProperty("Connection", "close");
+                    conn.setConnectTimeout(8000);
+                    conn.setReadTimeout(8000);
                     conn.setDoOutput(true);
                     conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                    String payload = String.format("{\"code\":\"%s\",\"guestName\":\"%s\",\"guestGender\":\"%s\"}",
+                    String payload = String.format("{\"code\":\"%s\",\"guestClientId\":\"%s\",\"guestName\":\"%s\",\"guestGender\":\"%s\"}",
                             escapeJson(code.toUpperCase()),
+                            escapeJson(CLIENT_INSTANCE_ID),
                             escapeJson(studentName.isEmpty() ? "Adventurer" : studentName),
                             escapeJson(studentGender.isEmpty() ? "Boy" : studentGender));
                     try (OutputStream os = conn.getOutputStream()) {
@@ -5503,6 +5550,8 @@ public class QuizGame extends JFrame {
                 } catch (Exception ex) {
                     long elapsed = System.currentTimeMillis() - startMs;
                     System.out.println("[QuizDesktop] Room #" + code.toUpperCase() + " join failed: " + ex.getMessage());
+                } finally {
+                    if (conn != null) conn.disconnect();
                 }
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Could not connect to Global Room #" + code.toUpperCase() + ".\nPlease verify the code or check your internet connection.", "Connection Error", JOptionPane.ERROR_MESSAGE));
             }, "QuizDesktopCloudJoin").start();

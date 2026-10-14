@@ -79,6 +79,8 @@ export interface IDuelRoom {
   guestEvents?: string[];
   lastHostPing?: number;
   lastGuestPing?: number;
+  hostClientId?: string;
+  guestClientId?: string;
   pushEvent?: (role: 'host' | 'guest', event: string) => void;
 }
 

@@ -5822,6 +5822,7 @@ public class MainActivity extends Activity {
     // ==========================================
     // LIVE ONLINE PLAY (1v1 CROSS-PLATFORM DUEL)
     // ==========================================
+    static final String CLIENT_INSTANCE_ID = java.util.UUID.randomUUID().toString().substring(0, 8);
     DuelClient activeDuelClient = null;
 
     static String cleanDuelNet(String s) {
@@ -6005,7 +6006,7 @@ public class MainActivity extends Activity {
         // Cloud REST Relay Constructor
         DuelClient(String cloudBaseUrl, String roomCode, String cloudRole) {
             this.isCloud = true;
-            this.myName = studentName.isEmpty() ? "Player" : studentName;
+            this.myName = studentName.isEmpty() ? "Adventurer" : studentName;
             this.myGender = getActiveCharacterGenderFolder();
             this.cloudBaseUrl = cloudBaseUrl.endsWith("/") ? cloudBaseUrl.substring(0, cloudBaseUrl.length() - 1) : cloudBaseUrl;
             this.code = roomCode;
@@ -6019,13 +6020,16 @@ public class MainActivity extends Activity {
             cloudPollThread = new Thread(() -> {
                 android.util.Log.d("GoQuizDuel", "[CloudRelay] Started event poll for #" + roomCode + " (" + cloudRole + ")");
                 while (!closed) {
+                    java.net.HttpURLConnection conn = null;
                     try {
                         String ep = this.cloudBaseUrl + "/api/room/" + this.code + "/poll?role=" + this.cloudRole;
                         java.net.URL u = new java.net.URL(ep);
-                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
-                        conn.setConnectTimeout(6000);
-                        conn.setReadTimeout(6000);
-                        if (conn.getResponseCode() == 200) {
+                        conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn.setRequestProperty("Connection", "close");
+                        conn.setConnectTimeout(8000);
+                        conn.setReadTimeout(8000);
+                        int rc = conn.getResponseCode();
+                        if (rc == 200) {
                             java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
                             StringBuilder sb = new StringBuilder();
                             String line;
@@ -6044,11 +6048,13 @@ public class MainActivity extends Activity {
                                     }
                                 }
                             }
-                        } else if (conn.getResponseCode() == 404) {
+                        } else if (rc == 404) {
                             break;
                         }
                     } catch (Exception ex) {
                         try { Thread.sleep(400); } catch (Exception ignored) {}
+                    } finally {
+                        if (conn != null) conn.disconnect();
                     }
                 }
                 android.util.Log.d("GoQuizDuel", "[CloudRelay] Poll thread stopped for #" + roomCode);
@@ -6060,13 +6066,15 @@ public class MainActivity extends Activity {
         synchronized void send(String msg) {
             if (isCloud) {
                 backgroundExecutor.submit(() -> {
+                    java.net.HttpURLConnection conn = null;
                     try {
                         String ep = cloudBaseUrl + "/api/room/" + code + "/action";
                         java.net.URL u = new java.net.URL(ep);
-                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn = (java.net.HttpURLConnection) u.openConnection();
                         conn.setRequestMethod("POST");
-                        conn.setConnectTimeout(4000);
-                        conn.setReadTimeout(4000);
+                        conn.setRequestProperty("Connection", "close");
+                        conn.setConnectTimeout(6000);
+                        conn.setReadTimeout(6000);
                         conn.setDoOutput(true);
                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                         String payload = String.format("{\"role\":\"%s\",\"message\":\"%s\"}",
@@ -6078,6 +6086,8 @@ public class MainActivity extends Activity {
                         conn.getResponseCode();
                     } catch (Exception ex) {
                         android.util.Log.w("GoQuizDuel", "[CloudRelay] Action send error: " + ex.getMessage());
+                    } finally {
+                        if (conn != null) conn.disconnect();
                     }
                 });
                 return;
@@ -6102,13 +6112,15 @@ public class MainActivity extends Activity {
             });
             if (isCloud) {
                 backgroundExecutor.submit(() -> {
+                    java.net.HttpURLConnection conn = null;
                     try {
                         String ep = cloudBaseUrl + "/api/room/" + code + "/leave";
                         java.net.URL u = new java.net.URL(ep);
-                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn = (java.net.HttpURLConnection) u.openConnection();
                         conn.setRequestMethod("POST");
-                        conn.setConnectTimeout(3000);
-                        conn.setReadTimeout(3000);
+                        conn.setRequestProperty("Connection", "close");
+                        conn.setConnectTimeout(4000);
+                        conn.setReadTimeout(4000);
                         conn.setDoOutput(true);
                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                         String payload = String.format("{\"role\":\"%s\",\"name\":\"%s\"}",
@@ -6118,7 +6130,10 @@ public class MainActivity extends Activity {
                             os.write(payload.getBytes(StandardCharsets.UTF_8));
                         }
                         conn.getResponseCode();
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    } finally {
+                        if (conn != null) conn.disconnect();
+                    }
                 });
                 return;
             }
@@ -6236,10 +6251,14 @@ public class MainActivity extends Activity {
                             this.duelDiff = p[7];
                             try { this.duelSeed = Long.parseLong(p[8]); } catch (Exception ignored) {}
 
-                            boolean amHost = myName.equalsIgnoreCase(hName);
+                            boolean amHost = isCloud ? "host".equalsIgnoreCase(cloudRole) : myName.equalsIgnoreCase(hName);
                             this.myGender = amHost ? hGen : gGen;
                             this.opponentName = amHost ? gName : hName;
                             this.opponentGender = amHost ? gGen : hGen;
+
+                            if (waitingCardView != null) {
+                                waitingCardView.setVisibility(View.GONE);
+                            }
 
                             String qPayload = p.length >= 10 ? p[9] : "";
                             if (!qPayload.isEmpty()) {
@@ -6988,6 +7007,9 @@ public class MainActivity extends Activity {
                 } else {
                     for (String[] r : cachedCloudRooms) {
                         String rCode = r[0];
+                        if (activeDuelClient != null && !activeDuelClient.closed && activeDuelClient.code != null && activeDuelClient.code.equalsIgnoreCase(rCode)) {
+                            continue;
+                        }
                         String rHost = r[1];
                         String rGen = r[2];
                         String rLang = r[3];
@@ -7078,6 +7100,9 @@ public class MainActivity extends Activity {
                 } else {
                     for (String[] r : cachedLanRoomsList) {
                         String rCode = r[0];
+                        if (activeDuelClient != null && !activeDuelClient.closed && activeDuelClient.code != null && activeDuelClient.code.equalsIgnoreCase(rCode)) {
+                            continue;
+                        }
                         String rHost = r[1];
                         String rGen = r[2];
                         String rLang = r[3];
@@ -7153,11 +7178,13 @@ public class MainActivity extends Activity {
                 if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
                 String ep = baseUrl.endsWith("/") ? baseUrl + "api/rooms?format=raw" : baseUrl + "/api/rooms?format=raw";
                 android.util.Log.d("GoQuizDuel", "[CloudGateway] Fetching rooms from: " + ep);
+                java.net.HttpURLConnection conn = null;
                 try {
                     java.net.URL u = new java.net.URL(ep);
-                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
-                    conn.setConnectTimeout(4500);
-                    conn.setReadTimeout(4500);
+                    conn = (java.net.HttpURLConnection) u.openConnection();
+                    conn.setRequestProperty("Connection", "close");
+                    conn.setConnectTimeout(6000);
+                    conn.setReadTimeout(6000);
                     int rc = conn.getResponseCode();
                     long elapsed = System.currentTimeMillis() - startMs;
                     if (rc == 200) {
@@ -7180,6 +7207,8 @@ public class MainActivity extends Activity {
                 } catch (Exception ex) {
                     long elapsed = System.currentTimeMillis() - startMs;
                     android.util.Log.w("GoQuizDuel", "[CloudGateway] Rooms fetch failed in " + elapsed + "ms: " + ex.getMessage());
+                } finally {
+                    if (conn != null) conn.disconnect();
                 }
                 runOnUiThread(renderRoomsList);
             });
@@ -7245,15 +7274,18 @@ public class MainActivity extends Activity {
                     String qPayload = serializeDuelQuestions(qs);
 
                     String gCode = null;
+                    java.net.HttpURLConnection conn = null;
                     try {
                         java.net.URL u = new java.net.URL(ep);
-                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn = (java.net.HttpURLConnection) u.openConnection();
                         conn.setRequestMethod("POST");
-                        conn.setConnectTimeout(5000);
-                        conn.setReadTimeout(5000);
+                        conn.setRequestProperty("Connection", "close");
+                        conn.setConnectTimeout(8000);
+                        conn.setReadTimeout(8000);
                         conn.setDoOutput(true);
                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                        String payload = String.format("{\"hostName\":\"%s\",\"hostGender\":\"%s\",\"language\":\"%s\",\"difficulty\":\"%s\",\"questionsPayload\":\"%s\"}",
+                        String payload = String.format("{\"hostClientId\":\"%s\",\"hostName\":\"%s\",\"hostGender\":\"%s\",\"language\":\"%s\",\"difficulty\":\"%s\",\"questionsPayload\":\"%s\"}",
+                                escapeJson(CLIENT_INSTANCE_ID),
                                 escapeJson(studentName.isEmpty() ? "Adventurer" : studentName),
                                 escapeJson(getActiveCharacterGenderFolder()),
                                 escapeJson(sLang),
@@ -7271,7 +7303,10 @@ public class MainActivity extends Activity {
                             java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"code\"\\s*:\\s*\"([^\"]+)\"").matcher(sb.toString());
                             if (m.find()) gCode = m.group(1);
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    } finally {
+                        if (conn != null) conn.disconnect();
+                    }
 
                     final String finalCode = gCode != null ? gCode : "G" + (100 + (int)(Math.random() * 899));
                     runOnUiThread(() -> {
@@ -7293,8 +7328,7 @@ public class MainActivity extends Activity {
                         waitingCard.setVisibility(View.VISIBLE);
                         statusView.setText("★ [GLOBAL HOST ACTIVE] • Room #" + finalCode + " published to Cloud Gateway — Waiting for challenger...");
                         statusView.setTextColor(Color.rgb(130, 205, 255));
-                        Toast.makeText(this, "Global Duel Room #" + finalCode + " Created!", Toast.LENGTH_SHORT).show();
-                        showFantasyAlertDialog("GLOBAL ROOM CREATED", "Global Duel Room #" + finalCode + " is ready!\nShare this 4-letter code with your opponent worldwide.\n\nThe duel will start automatically once your challenger joins!");
+                        Toast.makeText(this, "Global Duel Room #" + finalCode + " Created! Waiting for challenger...", Toast.LENGTH_LONG).show();
                         refreshAllDuelRoomsAction.run();
                     });
                 });
@@ -7343,9 +7377,15 @@ public class MainActivity extends Activity {
                 return;
             }
 
-            // If alphanumeric with letters, check Global Cloud
+            if (activeDuelClient != null && !activeDuelClient.closed && activeDuelClient.code != null && activeDuelClient.code.equalsIgnoreCase(code)) {
+                showFantasyAlertDialog("HOSTING ACTIVE ROOM", "You are currently hosting Room #" + code.toUpperCase() + "!\n\nPlease wait for another player or challenger to join your match.");
+                return;
+            }
+
+            // If alphanumeric with letters or Global tab selected, check Global Cloud
             boolean hasLetters = code.matches(".*[a-zA-Z].*");
-            if (hasLetters) {
+            boolean isGlobalFilter = "GLOBAL".equals(roomFilter[0]);
+            if (hasLetters || isGlobalFilter) {
                 statusView.setText("● Joining Global Cloud Room #" + code.toUpperCase() + "...");
                 statusView.setTextColor(Color.rgb(130, 205, 255));
                 backgroundExecutor.submit(() -> {
@@ -7357,16 +7397,19 @@ public class MainActivity extends Activity {
                     final String fBaseUrl = baseUrl;
                     String ep = baseUrl.endsWith("/") ? baseUrl + "api/room/join" : baseUrl + "/api/room/join";
                     android.util.Log.d("GoQuizDuel", "[CloudJoin] Joining room #" + code.toUpperCase() + " on: " + ep);
+                    java.net.HttpURLConnection conn = null;
                     try {
                         java.net.URL u = new java.net.URL(ep);
-                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn = (java.net.HttpURLConnection) u.openConnection();
                         conn.setRequestMethod("POST");
-                        conn.setConnectTimeout(6000);
-                        conn.setReadTimeout(6000);
+                        conn.setRequestProperty("Connection", "close");
+                        conn.setConnectTimeout(8000);
+                        conn.setReadTimeout(8000);
                         conn.setDoOutput(true);
                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                        String payload = String.format("{\"code\":\"%s\",\"guestName\":\"%s\",\"guestGender\":\"%s\"}",
+                        String payload = String.format("{\"code\":\"%s\",\"guestClientId\":\"%s\",\"guestName\":\"%s\",\"guestGender\":\"%s\"}",
                                 escapeJson(code.toUpperCase()),
+                                escapeJson(CLIENT_INSTANCE_ID),
                                 escapeJson(studentName.isEmpty() ? "Adventurer" : studentName),
                                 escapeJson(getActiveCharacterGenderFolder()));
                         try (java.io.OutputStream os = conn.getOutputStream()) {
@@ -7421,6 +7464,8 @@ public class MainActivity extends Activity {
                     } catch (Exception ex) {
                         long elapsed = System.currentTimeMillis() - startMs;
                         android.util.Log.w("GoQuizDuel", "[CloudJoin] Room join failed in " + elapsed + "ms: " + ex.getMessage());
+                    } finally {
+                        if (conn != null) conn.disconnect();
                     }
                     runOnUiThread(() -> showFantasyAlertDialog("CONNECTION ERROR", "Could not connect to Global Room #" + code.toUpperCase() + ".\nPlease verify the code or check your internet connection."));
                 });
