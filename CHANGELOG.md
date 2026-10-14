@@ -2,6 +2,13 @@
 
 All notable changes to the **GoQuiz Adventure** project are documented here. This changelog is dynamically embedded into both the Android and Desktop builds.
 
+## [1.2.2] - 2026-10-14
+### Added
+- **20-Second Matchmaking Countdown & Ready Check**: Required mutual confirmation before launching 1v1 PvP LAN duels.
+- **Cross-Platform UI Alignment**: Identical fantasy-themed versus podiums, avatars, status badges, and action buttons across Android and Desktop.
+- **Opponent Readiness Telemetry**: Instant visual feedback in the UI when the opponent clicks ready.
+- **Server-Side Watchdog & Cleanup**: Automated 20.5s timeout cleanup on the embedded LAN server to prevent orphaned rooms if an opponent fails to ready up.
+
 ## [1.2.0] - 2026-10-10
 ### Added
 - **Cross-Platform Live 1v1 PvP Duels**: Real-time multiplayer duels between Android and Desktop devices over LAN or Wi-Fi hotspot.

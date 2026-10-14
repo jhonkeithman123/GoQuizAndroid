@@ -6924,8 +6924,8 @@ public class QuizGame extends JFrame {
                 )
         );
 
-        String vName = "1.2.1";
-        int vCode = 4;
+        String vName = "1.2.2";
+        int vCode = 5;
         String releaseDate = "October 2026";
         String channel = "Production Release";
         File vf = resolveAppPath("@/assets/version.json");

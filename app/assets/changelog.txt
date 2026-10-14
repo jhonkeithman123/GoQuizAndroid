@@ -1,3 +1,9 @@
+[v1.2.2] - 20s Matchmaking Countdown & Cross-Platform UI Consistency
+• Added 20-second Matchmaking Countdown: both players must confirm readiness within 20s before duel begins.
+• Cross-Platform UI Consistency: identical fantasy versus podiums, avatars, status badges, and action buttons on Mobile & Desktop.
+• Real-time Opponent Readiness Hook: live visual update when your opponent clicks ready.
+• Automatic Room Expiry & Watchdog: room and match are safely cancelled if a player declines or times out.
+
 [v1.2.1] - Desktop Launcher Compatibility & Zero-Dependency Update
 • Bundled self-contained Java 17 portable runtime (jre) into the Windows release bundle for zero-dependency execution.
 • Added runtime protection against "Java Virtual Machine Launcher" errors on PCs running older Java 8 runtimes.
