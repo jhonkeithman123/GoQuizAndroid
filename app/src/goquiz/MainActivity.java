@@ -34,6 +34,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.nio.charset.StandardCharsets;
 import android.database.Cursor;
+import android.database.ContentObserver;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
@@ -971,7 +972,7 @@ public class MainActivity extends Activity {
     private SensorEventListener sensorListener;
     private boolean isDriftRunning = false;
 
-    // Secret DB Menu Sensor & Key Tracking (Shake while holding Vol Up & Down)
+    // Secret DB Menu Sensor & Key Tracking (Shake while holding/rocking Vol Up & Down)
     private Sensor accelerometerSensor;
     private SensorEventListener shakeSensorListener;
     private float lastShakeX = 0, lastShakeY = 0, lastShakeZ = 0;
@@ -980,10 +981,83 @@ public class MainActivity extends Activity {
     private boolean isVolumeDownPressed = false;
     private long lastVolumeUpTime = 0;
     private long lastVolumeDownTime = 0;
+    private boolean isVolumeComboArmed = false;
+    private long volumeComboArmedExpiry = 0;
+    private long lastComboToastTime = 0;
+
+    private ContentObserver volumeObserver;
+    private int lastObservedStreamVolume = -1;
 
     private long lastSecretPromptTime = 0;
     private int secretTapCount = 0;
     private long lastSecretTapTime = 0;
+
+    private void vibrateTick(long durationMs) {
+        try {
+            Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            if (v != null && v.hasVibrator()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    v.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE));
+                } else {
+                    v.vibrate(durationMs);
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void checkVolumeComboArmed(long now) {
+        boolean bothPressed = isVolumeUpPressed && isVolumeDownPressed;
+        boolean bothRockedRecently = (now - lastVolumeUpTime < 4000) && (now - lastVolumeDownTime < 4000);
+        if (bothPressed || bothRockedRecently) {
+            isVolumeComboArmed = true;
+            volumeComboArmedExpiry = now + 4000;
+            if (now - lastComboToastTime > 3000) {
+                lastComboToastTime = now;
+                vibrateTick(45);
+                mainHandler.postDelayed(() -> vibrateTick(45), 110);
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Combo Armed: Shake phone to open Database Inspector", Toast.LENGTH_SHORT).show());
+            }
+        }
+    }
+
+    private void initVolumeObserver() {
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                lastObservedStreamVolume = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+            }
+            volumeObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
+                @Override
+                public void onChange(boolean selfChange) {
+                    super.onChange(selfChange);
+                    try {
+                        AudioManager a = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                        if (a != null) {
+                            int curVol = a.getStreamVolume(AudioManager.STREAM_MUSIC);
+                            long now = SystemClock.uptimeMillis();
+                            if (lastObservedStreamVolume >= 0) {
+                                if (curVol > lastObservedStreamVolume) {
+                                    isVolumeUpPressed = true;
+                                    lastVolumeUpTime = now;
+                                    vibrateTick(20);
+                                } else if (curVol < lastObservedStreamVolume) {
+                                    isVolumeDownPressed = true;
+                                    lastVolumeDownTime = now;
+                                    vibrateTick(20);
+                                } else {
+                                    lastVolumeUpTime = now;
+                                    lastVolumeDownTime = now;
+                                    vibrateTick(20);
+                                }
+                                checkVolumeComboArmed(now);
+                            }
+                            lastObservedStreamVolume = curVol;
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            };
+        } catch (Throwable ignored) {}
+    }
 
     private final Choreographer.FrameCallback driftCallback = new Choreographer.FrameCallback() {
         @Override
@@ -1055,6 +1129,7 @@ public class MainActivity extends Activity {
                             float x = event.values[0];
                             float y = event.values[1];
                             float z = event.values[2];
+                            long now = SystemClock.uptimeMillis();
 
                             // Proper Euclidean G-force
                             float gX = x / SensorManager.GRAVITY_EARTH;
@@ -1069,12 +1144,17 @@ public class MainActivity extends Activity {
                             lastShakeY = y;
                             lastShakeZ = z;
 
-                            // Firm physical shake threshold
-                            boolean isShakeSpike = (gForce > 1.85f) || (deltaX > 8.5f || deltaY > 8.5f || deltaZ > 8.5f);
+                            // Responsive physical shake threshold
+                            boolean isShakeSpike = (gForce > 1.45f) || (deltaX > 5.0f || deltaY > 5.0f || deltaZ > 5.0f);
 
-                            // MUST be shaking WHILE holding Volume Up and Down
-                            if (isShakeSpike && isHoldingVolumeUpAndDown()) {
-                                triggerSecretMenu("Shake + Holding Volume Up & Down");
+                            // MUST have Volume Up and Down engaged/armed or held
+                            boolean isComboActive = (isVolumeUpPressed && isVolumeDownPressed)
+                                    || (isVolumeComboArmed && now < volumeComboArmedExpiry)
+                                    || ((now - lastVolumeUpTime < 4000) && (now - lastVolumeDownTime < 4000));
+
+                            if (isShakeSpike && isComboActive) {
+                                isVolumeComboArmed = false;
+                                triggerSecretMenu("Shake + Volume Up & Down Combo");
                             }
                         }
 
@@ -1097,16 +1177,6 @@ public class MainActivity extends Activity {
     private void stopAmbientDrift() {
         isDriftRunning = false;
         Choreographer.getInstance().removeFrameCallback(driftCallback);
-    }
-
-    private boolean isHoldingVolumeUpAndDown() {
-        long now = SystemClock.uptimeMillis();
-        // 1. Both buttons held down simultaneously
-        if (isVolumeUpPressed && isVolumeDownPressed) return true;
-        // 2. Both Volume Up and Down were engaged/pressed within a 1.5s window and at least one is still held
-        boolean recentlyPressedBoth = (now - lastVolumeUpTime < 1500) && (now - lastVolumeDownTime < 1500);
-        if (recentlyPressedBoth && (isVolumeUpPressed || isVolumeDownPressed)) return true;
-        return false;
     }
 
     private synchronized void triggerSecretMenu(String source) {
@@ -1140,10 +1210,13 @@ public class MainActivity extends Activity {
                 if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
                     isVolumeUpPressed = true;
                     lastVolumeUpTime = now;
+                    vibrateTick(20);
                 } else {
                     isVolumeDownPressed = true;
                     lastVolumeDownTime = now;
+                    vibrateTick(20);
                 }
+                checkVolumeComboArmed(now);
             } else if (action == KeyEvent.ACTION_UP) {
                 if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
                     isVolumeUpPressed = false;
@@ -1168,20 +1241,17 @@ public class MainActivity extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         lastTouchInteractionTime = SystemClock.uptimeMillis();
+        long now = SystemClock.uptimeMillis();
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             isVolumeUpPressed = true;
-            lastVolumeUpTime = SystemClock.uptimeMillis();
-            if (isVolumeUpPressed && isVolumeDownPressed) {
-                triggerSecretMenu("Volume Up + Down Pressed");
-                return true;
-            }
+            lastVolumeUpTime = now;
+            vibrateTick(20);
+            checkVolumeComboArmed(now);
         } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             isVolumeDownPressed = true;
-            lastVolumeDownTime = SystemClock.uptimeMillis();
-            if (isVolumeUpPressed && isVolumeDownPressed) {
-                triggerSecretMenu("Volume Up + Down Pressed");
-                return true;
-            }
+            lastVolumeDownTime = now;
+            vibrateTick(20);
+            checkVolumeComboArmed(now);
         }
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
@@ -1254,6 +1324,7 @@ public class MainActivity extends Activity {
         loadQuestionBankFromAssets();
         initAudioEngine();
         initSensors();
+        initVolumeObserver();
 
         String loggedInUser = prefs.getString("loggedInStudent", null);
         if (loggedInUser != null && !loggedInUser.isEmpty()) {
@@ -1278,6 +1349,12 @@ public class MainActivity extends Activity {
         if (sensorManager != null && accelerometerSensor != null && shakeSensorListener != null) {
             sensorManager.registerListener(shakeSensorListener, accelerometerSensor, SensorManager.SENSOR_DELAY_UI);
         }
+        if (volumeObserver != null) {
+            try {
+                getContentResolver().registerContentObserver(
+                        android.provider.Settings.System.CONTENT_URI, true, volumeObserver);
+            } catch (Throwable ignored) {}
+        }
         startAmbientDrift();
     }
 
@@ -1294,6 +1371,11 @@ public class MainActivity extends Activity {
         }
         if (sensorManager != null && shakeSensorListener != null) {
             sensorManager.unregisterListener(shakeSensorListener);
+        }
+        if (volumeObserver != null) {
+            try {
+                getContentResolver().unregisterContentObserver(volumeObserver);
+            } catch (Throwable ignored) {}
         }
         stopAmbientDrift();
     }
