@@ -8,6 +8,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -5552,6 +5553,224 @@ public class MainActivity extends Activity {
     // LIVE ONLINE PLAY (1v1 CROSS-PLATFORM DUEL)
     // ==========================================
     DuelClient activeDuelClient = null;
+    Dialog activeReadyCheckDialog = null;
+    CountDownTimer activeReadyCountdownTimer = null;
+    volatile Runnable readyOpponentStatusHook = null;
+
+    void dismissReadyCheckDialog() {
+        if (activeReadyCountdownTimer != null) {
+            activeReadyCountdownTimer.cancel();
+            activeReadyCountdownTimer = null;
+        }
+        if (activeReadyCheckDialog != null) {
+            try {
+                activeReadyCheckDialog.dismiss();
+            } catch (Exception ignored) {}
+            activeReadyCheckDialog = null;
+        }
+    }
+
+    void showMatchReadyCheckDialog(DuelClient client, String code, String oppName, String oppGen, String lang, String diff, int timeoutSec) {
+        dismissReadyCheckDialog();
+
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setCancelable(false);
+        dialog.setCanceledOnTouchOutside(false);
+        activeReadyCheckDialog = dialog;
+
+        float d = getResources().getDisplayMetrics().density;
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding((int) (22 * d), (int) (18 * d), (int) (22 * d), (int) (18 * d));
+        root.setBackgroundResource(R.drawable.card_panel);
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        // 1. Header Title
+        TextView title = createStyledTextView("⚔️ MATCH FOUND! ACCEPT DUEL ⚔️", 17);
+        title.setTextColor(GOLD_LIGHT);
+        title.setTypeface(null, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        root.addView(title);
+        addVerticalSpacing(root, 6);
+
+        // 2. Countdown Timer Banner
+        final int[] secondsLeft = new int[]{timeoutSec > 0 ? timeoutSec : 20};
+        TextView timerLbl = createStyledTextView("⏱️ ACCEPT WITHIN: " + secondsLeft[0] + "s", 15);
+        timerLbl.setTextColor(Color.rgb(255, 200, 80));
+        timerLbl.setTypeface(null, Typeface.BOLD);
+        timerLbl.setGravity(Gravity.CENTER);
+        root.addView(timerLbl);
+        addVerticalSpacing(root, 10);
+
+        // 3. Match Details Badge
+        LinearLayout badge = new LinearLayout(this);
+        badge.setOrientation(LinearLayout.HORIZONTAL);
+        badge.setGravity(Gravity.CENTER);
+        badge.setPadding((int) (12 * d), (int) (4 * d), (int) (12 * d), (int) (4 * d));
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setColor(Color.argb(200, 24, 34, 52));
+        badgeBg.setCornerRadius(8 * d);
+        badgeBg.setStroke((int) (1 * d), Color.argb(160, 90, 150, 220));
+        badge.setBackground(badgeBg);
+
+        TextView badgeLbl = createStyledTextView("📜 " + lang.toUpperCase(Locale.ROOT) + " (" + diff.toUpperCase(Locale.ROOT) + ")  •  ROOM #" + code, 12);
+        badgeLbl.setTextColor(Color.rgb(130, 205, 255));
+        badgeLbl.setTypeface(null, Typeface.BOLD);
+        badge.addView(badgeLbl);
+        root.addView(badge);
+        addVerticalSpacing(root, 12);
+
+        // 4. Versus Podiums Row
+        LinearLayout vsRow = new LinearLayout(this);
+        vsRow.setOrientation(LinearLayout.HORIZONTAL);
+        vsRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        // Left Podium (You)
+        LinearLayout myPodium = new LinearLayout(this);
+        myPodium.setOrientation(LinearLayout.VERTICAL);
+        myPodium.setGravity(Gravity.CENTER_HORIZONTAL);
+        myPodium.setPadding((int) (10 * d), (int) (8 * d), (int) (10 * d), (int) (8 * d));
+        GradientDrawable myPodiumBg = new GradientDrawable();
+        myPodiumBg.setColor(Color.argb(210, 20, 28, 42));
+        myPodiumBg.setCornerRadius(8 * d);
+        myPodiumBg.setStroke((int) (1 * d), Color.argb(120, 231, 160, 39));
+        myPodium.setBackground(myPodiumBg);
+
+        ImageView myAvatar = new ImageView(this);
+        Bitmap myBmp = loadAvatarBitmap(client.myGender, (int) (42 * d));
+        if (myBmp != null) myAvatar.setImageBitmap(myBmp);
+        myPodium.addView(myAvatar);
+
+        TextView myNameLbl = createStyledTextView(client.myName, 12);
+        myNameLbl.setTextColor(TEXT);
+        myNameLbl.setTypeface(null, Typeface.BOLD);
+        myPodium.addView(myNameLbl);
+
+        TextView myReadyStatus = createStyledTextView("⏳ NOT READY", 10);
+        myReadyStatus.setTextColor(Color.rgb(255, 170, 70));
+        myReadyStatus.setTypeface(null, Typeface.BOLD);
+        myPodium.addView(myReadyStatus);
+        vsRow.addView(myPodium, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        // Center VS
+        TextView vsLbl = createStyledTextView("⚡ VS ⚡", 16);
+        vsLbl.setTextColor(GOLD_LIGHT);
+        vsLbl.setTypeface(null, Typeface.BOLD);
+        vsLbl.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams vsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        vsParams.setMargins((int) (6 * d), 0, (int) (6 * d), 0);
+        vsRow.addView(vsLbl, vsParams);
+
+        // Right Podium (Opponent)
+        LinearLayout oppPodium = new LinearLayout(this);
+        oppPodium.setOrientation(LinearLayout.VERTICAL);
+        oppPodium.setGravity(Gravity.CENTER_HORIZONTAL);
+        oppPodium.setPadding((int) (10 * d), (int) (8 * d), (int) (10 * d), (int) (8 * d));
+        GradientDrawable oppPodiumBg = new GradientDrawable();
+        oppPodiumBg.setColor(Color.argb(210, 20, 28, 42));
+        oppPodiumBg.setCornerRadius(8 * d);
+        oppPodiumBg.setStroke((int) (1 * d), Color.argb(120, 231, 160, 39));
+        oppPodium.setBackground(oppPodiumBg);
+
+        ImageView oppAvatar = new ImageView(this);
+        Bitmap oppBmp = loadAvatarBitmap(oppGen, (int) (42 * d));
+        if (oppBmp != null) oppAvatar.setImageBitmap(oppBmp);
+        oppPodium.addView(oppAvatar);
+
+        TextView oppNameLbl = createStyledTextView(oppName, 12);
+        oppNameLbl.setTextColor(TEXT);
+        oppNameLbl.setTypeface(null, Typeface.BOLD);
+        oppPodium.addView(oppNameLbl);
+
+        TextView oppReadyStatus = createStyledTextView("⏳ WAITING...", 10);
+        oppReadyStatus.setTextColor(Color.rgb(255, 170, 70));
+        oppReadyStatus.setTypeface(null, Typeface.BOLD);
+        oppPodium.addView(oppReadyStatus);
+        vsRow.addView(oppPodium, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        root.addView(vsRow);
+        addVerticalSpacing(root, 14);
+
+        // 5. Action Buttons Row
+        LinearLayout btnRow = new LinearLayout(this);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setGravity(Gravity.CENTER);
+
+        Button readyBtn = createStyledButton("⚔️ I AM READY!");
+        setButtonFantasyStyle(readyBtn, Color.rgb(28, 75, 45), Color.rgb(90, 220, 120));
+        readyBtn.setTextSize(13);
+
+        Button declineBtn = createStyledButton("✕ DECLINE");
+        setButtonFantasyStyle(declineBtn, Color.rgb(75, 25, 25), Color.rgb(220, 90, 90));
+        declineBtn.setTextSize(13);
+
+        btnRow.addView(readyBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
+        addHorizontalSpacing(btnRow, 10);
+        btnRow.addView(declineBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        root.addView(btnRow);
+
+        // Click Handlers
+        readyBtn.setOnClickListener(v -> {
+            readyBtn.setEnabled(false);
+            readyBtn.setText("✓ YOU ARE READY!");
+            myReadyStatus.setText("✓ READY!");
+            myReadyStatus.setTextColor(Color.rgb(90, 220, 120));
+            client.send("PLAYER_READY|" + code);
+            if ("✓ READY!".equals(oppReadyStatus.getText().toString())) {
+                timerLbl.setText("★ BOTH READY! STARTING DUEL...");
+                timerLbl.setTextColor(Color.rgb(90, 220, 120));
+            }
+        });
+
+        declineBtn.setOnClickListener(v -> {
+            dismissReadyCheckDialog();
+            client.send("DECLINE_MATCH|" + code);
+            client.close();
+            if (activeDuelClient == client) activeDuelClient = null;
+            showFantasyAlertDialog("MATCH DECLINED", "You declined the duel match.");
+        });
+
+        // CountDownTimer (20 seconds)
+        activeReadyCountdownTimer = new CountDownTimer(timeoutSec * 1000L, 1000L) {
+            @Override
+            public void onTick(long millisUntilFinished) {
+                int sec = (int) (millisUntilFinished / 1000L);
+                timerLbl.setText("⏱️ ACCEPT WITHIN: " + sec + "s");
+                if (sec <= 5) {
+                    timerLbl.setTextColor(Color.rgb(255, 80, 80));
+                }
+            }
+
+            @Override
+            public void onFinish() {
+                dismissReadyCheckDialog();
+                client.send("DECLINE_MATCH|" + code);
+                client.close();
+                if (activeDuelClient == client) activeDuelClient = null;
+                showFantasyAlertDialog("MATCH CANCELLED", "Match cancelled: 20 seconds expired before both players were ready.");
+            }
+        };
+        activeReadyCountdownTimer.start();
+
+        // Hook for opponent ready notification
+        readyOpponentStatusHook = () -> runOnUiThread(() -> {
+            oppReadyStatus.setText("✓ READY!");
+            oppReadyStatus.setTextColor(Color.rgb(90, 220, 120));
+            if ("✓ YOU ARE READY!".equals(readyBtn.getText().toString())) {
+                timerLbl.setText("★ BOTH READY! STARTING DUEL...");
+                timerLbl.setTextColor(Color.rgb(90, 220, 120));
+            }
+        });
+
+        dialog.setContentView(root);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            dialog.getWindow().setLayout((int) (340 * d), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
+    }
 
     static String cleanDuelNet(String s) {
         return s == null ? "" : s.replace("|", " ").replace("\n", " ").replace("\r", " ").trim();
@@ -5731,6 +5950,7 @@ public class MainActivity extends Activity {
             if (closed) return;
             closed = true;
             isLiveDuelConnected = false;
+            runOnUiThread(MainActivity.this::dismissReadyCheckDialog);
             runOnUiThread(() -> {
                 if (activeLiveDuelBadge != null) activeLiveDuelBadge.update(null, null);
             });
@@ -5837,7 +6057,49 @@ public class MainActivity extends Activity {
                         }
                     }
 
+                    case "MATCH_READY_CHECK" -> {
+                        // MATCH_READY_CHECK|code|hostName|hostGender|guestName|guestGender|language|difficulty|seed|payload|timeoutSec
+                        if (p.length >= 9) {
+                            this.code = p[1];
+                            String hName = p[2];
+                            String hGen = p[3];
+                            String gName = p[4];
+                            String gGen = p[5];
+                            this.duelLang = p[6];
+                            this.duelDiff = p[7];
+                            try { this.duelSeed = Long.parseLong(p[8]); } catch (Exception ignored) {}
+
+                            boolean amHost = myName.equalsIgnoreCase(hName);
+                            this.myGender = amHost ? hGen : gGen;
+                            this.opponentName = amHost ? gName : hName;
+                            this.opponentGender = amHost ? gGen : hGen;
+
+                            int timeoutSec = 20;
+                            if (p.length >= 11) {
+                                try { timeoutSec = Integer.parseInt(p[10]); } catch (Exception ignored) {}
+                            }
+
+                            if (waitingCardView != null) waitingCardView.setVisibility(View.GONE);
+                            showMatchReadyCheckDialog(this, this.code, this.opponentName, this.opponentGender, this.duelLang, this.duelDiff, timeoutSec);
+                        }
+                    }
+
+                    case "OPPONENT_READY" -> {
+                        if (readyOpponentStatusHook != null) {
+                            readyOpponentStatusHook.run();
+                        }
+                    }
+
+                    case "MATCH_CANCELLED" -> {
+                        dismissReadyCheckDialog();
+                        String reason = p.length >= 3 ? p[2] : "Match was cancelled or expired.";
+                        close();
+                        if (activeDuelClient == this) activeDuelClient = null;
+                        showFantasyAlertDialog("DUEL CANCELLED", reason);
+                    }
+
                     case "MATCH_START" -> {
+                        dismissReadyCheckDialog();
                         if (p.length >= 9) {
                             this.code = p[1];
                             String hName = p[2];
