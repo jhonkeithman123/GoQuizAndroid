@@ -971,24 +971,19 @@ public class MainActivity extends Activity {
     private SensorEventListener sensorListener;
     private boolean isDriftRunning = false;
 
-    // Secret DB Menu Sensor & Key Tracking (Shake + Vol Up & Down + Multi-touch + Sequences)
+    // Secret DB Menu Sensor & Key Tracking (Shake while holding Vol Up & Down)
     private Sensor accelerometerSensor;
     private SensorEventListener shakeSensorListener;
     private float lastShakeX = 0, lastShakeY = 0, lastShakeZ = 0;
-    private int consecutiveShakeCount = 0;
-    private long lastShakeSpikeTime = 0;
 
     private boolean isVolumeUpPressed = false;
     private boolean isVolumeDownPressed = false;
     private long lastVolumeUpTime = 0;
     private long lastVolumeDownTime = 0;
-    private int volumeSequenceCount = 0;
-    private long lastVolumeSequenceTime = 0;
 
     private long lastSecretPromptTime = 0;
     private int secretTapCount = 0;
     private long lastSecretTapTime = 0;
-    private long threeFingerStartTime = 0;
 
     private final Choreographer.FrameCallback driftCallback = new Choreographer.FrameCallback() {
         @Override
@@ -1060,7 +1055,6 @@ public class MainActivity extends Activity {
                             float x = event.values[0];
                             float y = event.values[1];
                             float z = event.values[2];
-                            long curTime = SystemClock.uptimeMillis();
 
                             // Proper Euclidean G-force
                             float gX = x / SensorManager.GRAVITY_EARTH;
@@ -1076,28 +1070,11 @@ public class MainActivity extends Activity {
                             lastShakeZ = z;
 
                             // Firm physical shake threshold
-                            boolean isShakeSpike = (gForce > 1.80f) || (deltaX > 8.0f || deltaY > 8.0f || deltaZ > 8.0f);
+                            boolean isShakeSpike = (gForce > 1.85f) || (deltaX > 8.5f || deltaY > 8.5f || deltaZ > 8.5f);
 
-                            if (isShakeSpike) {
-                                if (curTime - lastShakeSpikeTime > 180) {
-                                    lastShakeSpikeTime = curTime;
-                                    consecutiveShakeCount++;
-                                }
-
-                                // Trigger Option 1: Shaking while Volume buttons are held or recently rocked
-                                if (isVolumeComboActive()) {
-                                    triggerSecretMenu("Shake + Volume");
-                                    return;
-                                }
-
-                                // Trigger Option 2: 3 firm shakes in a row within 1.5 seconds (shake-only shortcut)
-                                if (consecutiveShakeCount >= 3) {
-                                    consecutiveShakeCount = 0;
-                                    triggerSecretMenu("Triple Shake");
-                                    return;
-                                }
-                            } else if (curTime - lastShakeSpikeTime > 1500) {
-                                consecutiveShakeCount = 0;
+                            // MUST be shaking WHILE holding Volume Up and Down
+                            if (isShakeSpike && isHoldingVolumeUpAndDown()) {
+                                triggerSecretMenu("Shake + Holding Volume Up & Down");
                             }
                         }
 
@@ -1122,16 +1099,13 @@ public class MainActivity extends Activity {
         Choreographer.getInstance().removeFrameCallback(driftCallback);
     }
 
-    private boolean isVolumeComboActive() {
+    private boolean isHoldingVolumeUpAndDown() {
         long now = SystemClock.uptimeMillis();
-        // 1. Both currently held
+        // 1. Both buttons held down simultaneously
         if (isVolumeUpPressed && isVolumeDownPressed) return true;
-        // 2. Either volume key is currently held down
-        if (isVolumeUpPressed || isVolumeDownPressed) return true;
-        // 3. User pressed both volume buttons within last 3 seconds
-        if (Math.abs(lastVolumeUpTime - lastVolumeDownTime) < 3000 && (now - Math.max(lastVolumeUpTime, lastVolumeDownTime) < 3000)) {
-            return true;
-        }
+        // 2. Both Volume Up and Down were engaged/pressed within a 1.5s window and at least one is still held
+        boolean recentlyPressedBoth = (now - lastVolumeUpTime < 1500) && (now - lastVolumeDownTime < 1500);
+        if (recentlyPressedBoth && (isVolumeUpPressed || isVolumeDownPressed)) return true;
         return false;
     }
 
@@ -1170,25 +1144,6 @@ public class MainActivity extends Activity {
                     isVolumeDownPressed = true;
                     lastVolumeDownTime = now;
                 }
-
-                // Volume click sequence (4 clicks within 2.5 seconds)
-                if (now - lastVolumeSequenceTime > 2500) {
-                    volumeSequenceCount = 0;
-                }
-                lastVolumeSequenceTime = now;
-                volumeSequenceCount++;
-
-                if (volumeSequenceCount >= 4) {
-                    volumeSequenceCount = 0;
-                    triggerSecretMenu("Volume Sequence (4 Clicks)");
-                    return true;
-                }
-
-                // If both physically pressed at once
-                if (isVolumeUpPressed && isVolumeDownPressed) {
-                    triggerSecretMenu("Volume Up + Down Pressed");
-                    return true;
-                }
             } else if (action == KeyEvent.ACTION_UP) {
                 if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
                     isVolumeUpPressed = false;
@@ -1198,29 +1153,6 @@ public class MainActivity extends Activity {
             }
         }
         return super.dispatchKeyEvent(event);
-    }
-
-    @Override
-    public boolean dispatchTouchEvent(MotionEvent ev) {
-        lastTouchInteractionTime = SystemClock.uptimeMillis();
-        int action = ev.getActionMasked();
-        int pointerCount = ev.getPointerCount();
-
-        // 3-finger touch hold secret gesture (hold 3 fingers for 0.6 seconds)
-        if (pointerCount >= 3) {
-            if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_DOWN) {
-                threeFingerStartTime = SystemClock.uptimeMillis();
-            } else if (action == MotionEvent.ACTION_MOVE) {
-                if (threeFingerStartTime > 0 && (SystemClock.uptimeMillis() - threeFingerStartTime) > 600) {
-                    threeFingerStartTime = 0;
-                    triggerSecretMenu("3-Finger Touch Hold");
-                }
-            }
-        } else {
-            threeFingerStartTime = 0;
-        }
-
-        return super.dispatchTouchEvent(ev);
     }
 
     @Override
