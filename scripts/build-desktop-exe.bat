@@ -22,9 +22,11 @@ for /f "tokens=2 delims=:, " %%a in ('findstr /i "versionName" app\assets\versio
     if not "!RAW_VER!"=="" set "VER_NAME=!RAW_VER!"
 )
 
+set "TARGET_DIR=dist\v!VER_NAME!"
+if not exist "!TARGET_DIR!" mkdir "!TARGET_DIR!"
+
 echo [2/4] Packaging GoQuiz-v!VER_NAME!.jar...
-if not exist "dist" mkdir "dist"
-jar cfe "dist/GoQuiz-v!VER_NAME!.jar" QuizGame -C desktop .
+jar cfe "!TARGET_DIR!\GoQuiz-v!VER_NAME!.jar" QuizGame -C desktop .
 if %errorlevel% neq 0 (
     echo [ERROR] JAR packaging failed!
     exit /b 1
@@ -37,45 +39,45 @@ if not exist %CSC% (
 )
 
 if exist %CSC% (
-    %CSC% /nologo /target:winexe /win32icon:app\assets\images\GoQuiz.ico /resource:"dist\GoQuiz-v!VER_NAME!.jar",GoQuiz.jar /out:"dist\GoQuiz-v!VER_NAME!.exe" scripts\launcher.cs
+    %CSC% /nologo /target:winexe /win32icon:app\assets\images\GoQuiz.ico /resource:"!TARGET_DIR!\GoQuiz-v!VER_NAME!.jar",GoQuiz.jar /out:"!TARGET_DIR!\GoQuiz-v!VER_NAME!.exe" scripts\launcher.cs
     if %errorlevel% neq 0 (
         echo [WARN] Compilation with icon failed, compiling without icon...
-        %CSC% /nologo /target:winexe /resource:"dist\GoQuiz-v!VER_NAME!.jar",GoQuiz.jar /out:"dist\GoQuiz-v!VER_NAME!.exe" scripts\launcher.cs
+        %CSC% /nologo /target:winexe /resource:"!TARGET_DIR!\GoQuiz-v!VER_NAME!.jar",GoQuiz.jar /out:"!TARGET_DIR!\GoQuiz-v!VER_NAME!.exe" scripts\launcher.cs
     )
-    echo [SUCCESS] Built bundled standalone dist\GoQuiz-v!VER_NAME!.exe successfully!
+    echo [SUCCESS] Built bundled standalone !TARGET_DIR!\GoQuiz-v!VER_NAME!.exe successfully!
 ) else (
-    echo [WARN] csc.exe not found. Standalone JAR created: dist\GoQuiz-v!VER_NAME!.jar
+    echo [WARN] csc.exe not found. Standalone JAR created: !TARGET_DIR!\GoQuiz-v!VER_NAME!.jar
 )
 
-del /q "dist\GoQuiz.exe" "dist\GoQuizAdventure.jar" 2>nul
+del /q "!TARGET_DIR!\GoQuiz.exe" "!TARGET_DIR!\GoQuizAdventure.jar" 2>nul
 
 echo [4/5] Generating portable zero-dependency Java 17 runtime...
 set "HAS_JRE=0"
 where jlink >nul 2>nul
 if %errorlevel% equ 0 (
-    if exist "dist\jre" rmdir /s /q "dist\jre"
-    jlink --add-modules java.base,java.desktop --strip-debug --no-man-pages --no-header-files --compress=2 --output "dist\jre"
-    if exist "dist\jre\bin\javaw.exe" set "HAS_JRE=1"
+    if exist "!TARGET_DIR!\jre" rmdir /s /q "!TARGET_DIR!\jre"
+    jlink --add-modules java.base,java.desktop --strip-debug --no-man-pages --no-header-files --compress=2 --output "!TARGET_DIR!\jre"
+    if exist "!TARGET_DIR!\jre\bin\javaw.exe" set "HAS_JRE=1"
 )
 
 echo [5/5] Compressing complete desktop release bundle...
-if exist "dist\app" rmdir /s /q "dist\app"
-mkdir "dist\app\assets" 2>nul
-xcopy /e /i /y "app\assets" "dist\app\assets" >nul
+if exist "!TARGET_DIR!\app" rmdir /s /q "!TARGET_DIR!\app"
+mkdir "!TARGET_DIR!\app\assets" 2>nul
+xcopy /e /i /y "app\assets" "!TARGET_DIR!\app\assets" >nul
 
 if "!HAS_JRE!"=="1" (
-    powershell -NoProfile -Command "Compress-Archive -Path 'dist\GoQuiz-v!VER_NAME!.exe', 'dist\app', 'dist\jre' -DestinationPath 'dist\GoQuiz-v!VER_NAME!-Windows.zip' -Force"
-    rmdir /s /q "dist\jre"
-    rmdir /s /q "dist\app"
-    echo [SUCCESS] Bundled portable Java 17 and assets into dist\GoQuiz-v!VER_NAME!-Windows.zip - zero install required
+    powershell -NoProfile -Command "Compress-Archive -Path '!TARGET_DIR!\GoQuiz-v!VER_NAME!.exe', '!TARGET_DIR!\app', '!TARGET_DIR!\jre' -DestinationPath '!TARGET_DIR!\GoQuiz-v!VER_NAME!-Windows.zip' -Force"
+    rmdir /s /q "!TARGET_DIR!\jre"
+    rmdir /s /q "!TARGET_DIR!\app"
+    echo [SUCCESS] Bundled portable Java 17 and assets into !TARGET_DIR!\GoQuiz-v!VER_NAME!-Windows.zip - zero install required
 ) else (
-    powershell -NoProfile -Command "Compress-Archive -Path 'dist\GoQuiz-v!VER_NAME!.exe', 'dist\app' -DestinationPath 'dist\GoQuiz-v!VER_NAME!-Windows.zip' -Force"
-    rmdir /s /q "dist\app"
+    powershell -NoProfile -Command "Compress-Archive -Path '!TARGET_DIR!\GoQuiz-v!VER_NAME!.exe', '!TARGET_DIR!\app' -DestinationPath '!TARGET_DIR!\GoQuiz-v!VER_NAME!-Windows.zip' -Force"
+    rmdir /s /q "!TARGET_DIR!\app"
 )
 
 echo ===================================================
-echo [SUCCESS] Desktop distribution ready in dist\:
-echo   - dist\GoQuiz-v!VER_NAME!-Windows.zip (Zero-setup bundle - runs on any PC with no Java needed)
-echo   - dist\GoQuiz-v!VER_NAME!.exe         (Standalone launcher with embedded game JAR)
-echo   - dist\GoQuiz-v!VER_NAME!.jar         (Cross-platform runnable package for Mac/Linux)
+echo [SUCCESS] Desktop distribution ready in !TARGET_DIR!\:
+echo   - !TARGET_DIR!\GoQuiz-v!VER_NAME!-Windows.zip (Zero-setup bundle - runs on any PC with no Java needed)
+echo   - !TARGET_DIR!\GoQuiz-v!VER_NAME!.exe         (Standalone launcher with embedded game JAR)
+echo   - !TARGET_DIR!\GoQuiz-v!VER_NAME!.jar         (Cross-platform runnable package for Mac/Linux)
 echo ===================================================
