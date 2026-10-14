@@ -58,8 +58,8 @@ This update equips developers, educators, and administrators with the ability to
 
 | Asset | Platform | Description |
 | :--- | :--- | :--- |
-| **`GoQuiz-v1.3.0.apk`** | Android (API 23+) | **Official Stable Release** for mobile devices and tablets. |
-| **`GoQuiz-v1.3.0-b1.apk`** | Android (API 23+) | **Beta Channel Release** with early diagnostic telemetry. |
+| [**`GoQuiz-v1.3.0.apk`**](dist/v1.3.0/GoQuiz-v1.3.0.apk) | Android (API 23+) | **Official Stable Release** for mobile devices and tablets. |
+| [**`GoQuiz-v1.3.0-b1.apk`**](dist/v1.3.0-b1/GoQuiz-v1.3.0-b1.apk) | Android (API 23+) | **Beta Channel Release** with early diagnostic telemetry. |
 
 ---
 
