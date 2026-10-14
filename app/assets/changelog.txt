@@ -1,3 +1,9 @@
+[v1.3.0] - Secret Database Inspector & Physical Combo Trigger
+• Added Secret Database Inspector: mobile-scale SQLite database browser to inspect tables, view column schemas, browse rows, and run custom SQL queries.
+• Added Secret Combo Trigger: Volume Up + Volume Down combo arming with tactile haptic ticks and double-vibration pulse + Shake detection.
+• Added Password Protection: Secure access requirement with master authorization key ("GQA-12345").
+• Multi-Channel Key Detection: System ContentObserver and Activity key dispatch for rock-solid hardware volume button response.
+
 [v1.2.2] - 20s Matchmaking Countdown & Cross-Platform UI Consistency
 • Added 20-second Matchmaking Countdown: both players must confirm readiness within 20s before duel begins.
 • Cross-Platform UI Consistency: identical fantasy versus podiums, avatars, status badges, and action buttons on Mobile & Desktop.
