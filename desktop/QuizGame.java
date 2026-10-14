@@ -231,6 +231,132 @@ public class QuizGame extends JFrame {
                 }
             } catch (Exception ignored) {}
         }
+
+        static class ColumnMeta {
+            int cid;
+            String name;
+            String type;
+            boolean notNull;
+            String defaultValue;
+            boolean isPrimaryKey;
+        }
+
+        public synchronized List<String> getAllTableNames() {
+            List<String> tables = new ArrayList<>();
+            if (!available) {
+                tables.add(TABLE_STUDENTS);
+                return tables;
+            }
+            String sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC";
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+                while (rs.next()) {
+                    tables.add(rs.getString("name"));
+                }
+            } catch (SQLException ignored) {}
+            if (tables.isEmpty()) tables.add(TABLE_STUDENTS);
+            return tables;
+        }
+
+        public synchronized List<ColumnMeta> getTableColumns(String tableName) {
+            List<ColumnMeta> columns = new ArrayList<>();
+            if (!available) return columns;
+            String sql = "PRAGMA table_info(" + tableName + ")";
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+                while (rs.next()) {
+                    ColumnMeta m = new ColumnMeta();
+                    m.cid = rs.getInt("cid");
+                    m.name = rs.getString("name");
+                    m.type = rs.getString("type");
+                    m.notNull = rs.getInt("notnull") == 1;
+                    m.defaultValue = rs.getString("dflt_value");
+                    m.isPrimaryKey = rs.getInt("pk") > 0;
+                    columns.add(m);
+                }
+            } catch (SQLException ignored) {}
+            return columns;
+        }
+
+        public synchronized String getTableSql(String tableName) {
+            if (!available) return "";
+            String sql = "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?";
+            try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, tableName);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) return rs.getString("sql");
+                }
+            } catch (SQLException ignored) {}
+            return "";
+        }
+
+        public synchronized int getTableRowCount(String tableName) {
+            if (!available) return 0;
+            String sql = "SELECT COUNT(*) FROM " + tableName;
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+                if (rs.next()) return rs.getInt(1);
+            } catch (SQLException ignored) {}
+            return 0;
+        }
+
+        public synchronized List<Map<String, String>> queryTableData(String tableName, String searchQuery) {
+            List<Map<String, String>> rows = new ArrayList<>();
+            if (!available) return rows;
+            String sql = "SELECT * FROM " + tableName;
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+                ResultSetMetaData meta = rs.getMetaData();
+                int colCount = meta.getColumnCount();
+                String q = searchQuery == null ? "" : searchQuery.trim().toLowerCase(java.util.Locale.ROOT);
+                while (rs.next()) {
+                    Map<String, String> row = new LinkedHashMap<>();
+                    boolean match = q.isEmpty();
+                    for (int i = 1; i <= colCount; i++) {
+                        String col = meta.getColumnLabel(i);
+                        String val = rs.getString(i);
+                        if (val == null) val = "NULL";
+                        row.put(col, val);
+                        if (!match && val.toLowerCase(java.util.Locale.ROOT).contains(q)) match = true;
+                    }
+                    if (match) rows.add(row);
+                }
+            } catch (SQLException ignored) {}
+            return rows;
+        }
+
+        public synchronized String executeRawQuery(String sql) {
+            if (!available) return "SQLite Database is unavailable.";
+            if (sql == null || sql.trim().isEmpty()) return "Query is empty.";
+            String trimmed = sql.trim();
+            String lower = trimmed.toLowerCase(java.util.Locale.ROOT);
+            if (lower.startsWith("select") || lower.startsWith("pragma") || lower.startsWith("explain")) {
+                try (Connection conn = getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(trimmed)) {
+                    ResultSetMetaData meta = rs.getMetaData();
+                    int colCount = meta.getColumnCount();
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 1; i <= colCount; i++) {
+                        sb.append(meta.getColumnLabel(i)).append(i < colCount ? " | " : "\n");
+                    }
+                    sb.append("--------------------------------------------------\n");
+                    int count = 0;
+                    while (rs.next() && count < 200) {
+                        count++;
+                        for (int i = 1; i <= colCount; i++) {
+                            String val = rs.getString(i);
+                            sb.append(val != null ? val : "NULL").append(i < colCount ? " | " : "\n");
+                        }
+                    }
+                    sb.append("\n(").append(count).append(" rows returned)");
+                    return sb.toString();
+                } catch (SQLException e) {
+                    return "Error: " + e.getMessage();
+                }
+            } else {
+                try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+                    int affected = stmt.executeUpdate(trimmed);
+                    return "Query executed successfully. (" + affected + " rows affected)";
+                } catch (SQLException e) {
+                    return "Error: " + e.getMessage();
+                }
+            }
+        }
     }
 
     private final QuizDatabase quizDb = new QuizDatabase(resolveDesktopDataFile("goquiz.db"));
@@ -5964,80 +6090,166 @@ public class QuizGame extends JFrame {
     // ==========================================
     private void showDatabaseInspector() {
         JDialog dialog = new JDialog(this, "GoQuiz SQLite Database Inspector", true);
-        dialog.setSize(860, 580);
+        dialog.setSize(920, 640);
         dialog.setLocationRelativeTo(this);
 
         JPanel content = new JPanel(new BorderLayout(10, 10));
         content.setBackground(new Color(15, 23, 42));
-        content.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+        content.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
 
-        // Header
-        JPanel headerPanel = new JPanel(new GridLayout(2, 1, 4, 4));
+        // Header Panel: Title, Status, and Table Dropdown
+        JPanel headerPanel = new JPanel(new BorderLayout(10, 6));
         headerPanel.setOpaque(false);
+
+        JPanel titleBox = new JPanel(new GridLayout(2, 1, 2, 2));
+        titleBox.setOpaque(false);
         JLabel title = new JLabel("🛠️ SQLite Database Inspector", SwingConstants.LEFT);
         title.setFont(pixelFont(Font.BOLD, 20));
         title.setForeground(GOLD_LIGHT);
 
         String dbStatus = quizDb.isAvailable()
                 ? "Connected: " + quizDb.getFile().getAbsolutePath()
-                : "SQLite Unavailable (Using Properties Fallback)";
-        JLabel subTitle = new JLabel(dbStatus + "  |  Hotkeys: F12 / Ctrl+Shift+D");
+                : "SQLite Unavailable (Using Fallback)";
+        JLabel subTitle = new JLabel(dbStatus + "  |  DB Browser Desktop / Mobile Scale  |  Ctrl+Shift+~");
         subTitle.setFont(pixelFont(Font.PLAIN, 12));
         subTitle.setForeground(new Color(148, 163, 184));
-        headerPanel.add(title);
-        headerPanel.add(subTitle);
+        titleBox.add(title);
+        titleBox.add(subTitle);
+        headerPanel.add(titleBox, BorderLayout.CENTER);
+
+        // Table Selection Box
+        JPanel tableSelectBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        tableSelectBox.setOpaque(false);
+        JLabel tblLbl = new JLabel("Table:");
+        tblLbl.setForeground(GOLD_LIGHT);
+        tblLbl.setFont(pixelFont(Font.BOLD, 13));
+
+        List<String> tableList = quizDb.getAllTableNames();
+        JComboBox<String> tableCombo = new JComboBox<>(tableList.toArray(new String[0]));
+        styleFantasyInput(tableCombo);
+        tableCombo.setPreferredSize(new Dimension(170, 32));
+
+        JButton btnRefreshTables = createFantasyButton("🔄");
+        btnRefreshTables.setPreferredSize(new Dimension(46, 32));
+
+        tableSelectBox.add(tblLbl);
+        tableSelectBox.add(tableCombo);
+        tableSelectBox.add(btnRefreshTables);
+        headerPanel.add(tableSelectBox, BorderLayout.EAST);
+
         content.add(headerPanel, BorderLayout.NORTH);
 
-        // Table Model
-        String[] columns = {"Name", "Grade", "Section", "Gender", "Password"};
-        DefaultTableModel model = new DefaultTableModel(columns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
+        // 3-Tabbed Pane: Browse Data, DB Structure, SQL Console
+        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane.setFont(pixelFont(Font.BOLD, 13));
+        tabbedPane.setBackground(new Color(30, 41, 59));
+        tabbedPane.setForeground(GOLD_LIGHT);
 
-        JTable table = new JTable(model);
-        table.setRowHeight(28);
-        table.setFont(pixelFont(Font.PLAIN, 13));
-        table.getTableHeader().setFont(pixelFont(Font.BOLD, 13));
-        table.setBackground(new Color(30, 41, 59));
-        table.setForeground(Color.WHITE);
-        table.setSelectionBackground(new Color(231, 160, 39, 180));
-        table.setSelectionForeground(Color.BLACK);
-        table.getTableHeader().setBackground(new Color(51, 65, 85));
-        table.getTableHeader().setForeground(GOLD_LIGHT);
+        // ==========================================
+        // TAB 1: BROWSE DATA
+        // ==========================================
+        JPanel browsePanel = new JPanel(new BorderLayout(0, 8));
+        browsePanel.setOpaque(false);
+        browsePanel.setBorder(BorderFactory.createEmptyBorder(8, 4, 4, 4));
 
-        Runnable reloadData = () -> {
-            model.setRowCount(0);
-            List<StudentAccount> list;
-            if (quizDb.isAvailable()) {
-                list = quizDb.getAllStudents();
-            } else {
-                list = new ArrayList<>(studentAccounts.values());
-            }
-            for (StudentAccount a : list) {
-                model.addRow(new Object[]{a.name, a.grade, a.section, a.gender, a.password});
-            }
-        };
-        reloadData.run();
-
-        JScrollPane scrollPane = new JScrollPane(table);
-        scrollPane.getViewport().setBackground(new Color(15, 23, 42));
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(51, 65, 85)));
-
-        // Search & Filter Toolbar
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        toolbar.setOpaque(false);
-        JLabel searchLbl = new JLabel("Search:");
+        JPanel browseToolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        browseToolbar.setOpaque(false);
+        JLabel searchLbl = new JLabel("Filter:");
         searchLbl.setForeground(Color.WHITE);
         searchLbl.setFont(pixelFont(Font.BOLD, 13));
-        JTextField searchField = new JTextField(15);
+        JTextField searchField = new JTextField(16);
         styleFantasyInput(searchField);
         searchField.setPreferredSize(new Dimension(180, 32));
 
-        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(model);
-        table.setRowSorter(sorter);
+        JLabel rowCountLbl = new JLabel("Records: 0");
+        rowCountLbl.setForeground(new Color(148, 163, 184));
+        rowCountLbl.setFont(pixelFont(Font.PLAIN, 12));
+
+        JButton btnAdd = createFantasyButton("+ Add Account");
+        JButton btnExport = createFantasyButton("Export JSON");
+        btnAdd.setPreferredSize(new Dimension(140, 32));
+        btnExport.setPreferredSize(new Dimension(130, 32));
+
+        browseToolbar.add(searchLbl);
+        browseToolbar.add(searchField);
+        browseToolbar.add(rowCountLbl);
+        browseToolbar.add(btnAdd);
+        browseToolbar.add(btnExport);
+        browsePanel.add(browseToolbar, BorderLayout.NORTH);
+
+        DefaultTableModel browseModel = new DefaultTableModel() {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        JTable browseTable = new JTable(browseModel);
+        browseTable.setRowHeight(26);
+        browseTable.setFont(pixelFont(Font.PLAIN, 13));
+        browseTable.getTableHeader().setFont(pixelFont(Font.BOLD, 13));
+        browseTable.setBackground(new Color(30, 41, 59));
+        browseTable.setForeground(Color.WHITE);
+        browseTable.setSelectionBackground(new Color(231, 160, 39, 180));
+        browseTable.setSelectionForeground(Color.BLACK);
+        browseTable.getTableHeader().setBackground(new Color(51, 65, 85));
+        browseTable.getTableHeader().setForeground(GOLD_LIGHT);
+
+        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(browseModel);
+        browseTable.setRowSorter(sorter);
+
+        JScrollPane browseScroll = new JScrollPane(browseTable);
+        browseScroll.getViewport().setBackground(new Color(15, 23, 42));
+        browseScroll.setBorder(BorderFactory.createLineBorder(new Color(51, 65, 85)));
+        browsePanel.add(browseScroll, BorderLayout.CENTER);
+
+        // Bottom Actions for Browse Tab (Edit, Delete)
+        JPanel browseActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        browseActions.setOpaque(false);
+        JButton btnEdit = createFantasyButton("✏️ Edit Selected");
+        JButton btnDelete = createFantasyButton("🗑️ Delete Selected");
+        btnEdit.setPreferredSize(new Dimension(140, 34));
+        btnDelete.setPreferredSize(new Dimension(150, 34));
+        browseActions.add(btnEdit);
+        browseActions.add(btnDelete);
+        browsePanel.add(browseActions, BorderLayout.SOUTH);
+
+        Runnable reloadBrowseTable = () -> {
+            String curTbl = (String) tableCombo.getSelectedItem();
+            if (curTbl == null || curTbl.isEmpty()) curTbl = "student_accounts";
+
+            boolean isStudentTbl = "student_accounts".equalsIgnoreCase(curTbl);
+            btnAdd.setVisible(isStudentTbl);
+            btnExport.setVisible(isStudentTbl);
+            btnEdit.setVisible(isStudentTbl);
+            btnDelete.setVisible(isStudentTbl);
+
+            if (isStudentTbl) {
+                browseModel.setDataVector(new Object[0][0], new String[]{"Name", "Grade", "Section", "Gender", "Password"});
+                List<StudentAccount> list = quizDb.isAvailable() ? quizDb.getAllStudents() : new ArrayList<>(studentAccounts.values());
+                for (StudentAccount a : list) {
+                    browseModel.addRow(new Object[]{a.name, a.grade, a.section, a.gender, a.password});
+                }
+                rowCountLbl.setText("Records: " + list.size());
+            } else {
+                List<Map<String, String>> rows = quizDb.queryTableData(curTbl, "");
+                if (!rows.isEmpty()) {
+                    String[] cols = rows.get(0).keySet().toArray(new String[0]);
+                    browseModel.setDataVector(new Object[0][0], cols);
+                    for (Map<String, String> row : rows) {
+                        Object[] rowData = new Object[cols.length];
+                        for (int i = 0; i < cols.length; i++) {
+                            rowData[i] = row.get(cols[i]);
+                        }
+                        browseModel.addRow(rowData);
+                    }
+                    rowCountLbl.setText("Records: " + rows.size());
+                } else {
+                    List<QuizDatabase.ColumnMeta> meta = quizDb.getTableColumns(curTbl);
+                    String[] cols = new String[meta.size()];
+                    for (int i = 0; i < meta.size(); i++) cols[i] = meta.get(i).name;
+                    browseModel.setDataVector(new Object[0][0], cols);
+                    rowCountLbl.setText("Records: 0");
+                }
+            }
+        };
 
         searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             private void updateFilter() {
@@ -6052,11 +6264,6 @@ public class QuizGame extends JFrame {
             @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { updateFilter(); }
             @Override public void changedUpdate(javax.swing.event.DocumentEvent e) { updateFilter(); }
         });
-
-        JButton btnAdd = createFantasyButton("+ Add Account");
-        JButton btnExport = createFantasyButton("Export JSON");
-        btnAdd.setPreferredSize(new Dimension(140, 34));
-        btnExport.setPreferredSize(new Dimension(130, 34));
 
         btnAdd.addActionListener(e -> {
             JTextField nF = new JTextField();
@@ -6083,7 +6290,7 @@ public class QuizGame extends JFrame {
                 if (quizDb.isAvailable()) quizDb.insertStudent(acc);
                 studentAccounts.put(nm.toLowerCase(), acc);
                 saveStudentAccounts();
-                reloadData.run();
+                reloadBrowseTable.run();
                 JOptionPane.showMessageDialog(dialog, "Account added successfully!");
             }
         });
@@ -6107,40 +6314,18 @@ public class QuizGame extends JFrame {
             JOptionPane.showMessageDialog(dialog, "Copied " + list.size() + " accounts to clipboard as JSON!", "Export Complete", JOptionPane.INFORMATION_MESSAGE);
         });
 
-        toolbar.add(searchLbl);
-        toolbar.add(searchField);
-        toolbar.add(btnAdd);
-        toolbar.add(btnExport);
-
-        JPanel centerPanel = new JPanel(new BorderLayout(0, 8));
-        centerPanel.setOpaque(false);
-        centerPanel.add(toolbar, BorderLayout.NORTH);
-        centerPanel.add(scrollPane, BorderLayout.CENTER);
-        content.add(centerPanel, BorderLayout.CENTER);
-
-        // Bottom Actions (Edit, Delete, Close)
-        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 4));
-        bottomPanel.setOpaque(false);
-
-        JButton btnEdit = createFantasyButton("✏️ Edit Selected");
-        JButton btnDelete = createFantasyButton("🗑️ Delete Selected");
-        JButton btnClose = createFantasyButton("Close");
-        btnEdit.setPreferredSize(new Dimension(140, 36));
-        btnDelete.setPreferredSize(new Dimension(150, 36));
-        btnClose.setPreferredSize(new Dimension(100, 36));
-
         btnEdit.addActionListener(e -> {
-            int selectedRow = table.getSelectedRow();
+            int selectedRow = browseTable.getSelectedRow();
             if (selectedRow < 0) {
                 JOptionPane.showMessageDialog(dialog, "Please select an account row to edit.", "Selection Required", JOptionPane.WARNING_MESSAGE);
                 return;
             }
-            int modelRow = table.convertRowIndexToModel(selectedRow);
-            String nameVal = (String) model.getValueAt(modelRow, 0);
-            String gradeVal = (String) model.getValueAt(modelRow, 1);
-            String sectionVal = (String) model.getValueAt(modelRow, 2);
-            String genderVal = (String) model.getValueAt(modelRow, 3);
-            String passVal = (String) model.getValueAt(modelRow, 4);
+            int modelRow = browseTable.convertRowIndexToModel(selectedRow);
+            String nameVal = String.valueOf(browseModel.getValueAt(modelRow, 0));
+            String gradeVal = String.valueOf(browseModel.getValueAt(modelRow, 1));
+            String sectionVal = String.valueOf(browseModel.getValueAt(modelRow, 2));
+            String genderVal = String.valueOf(browseModel.getValueAt(modelRow, 3));
+            String passVal = String.valueOf(browseModel.getValueAt(modelRow, 4));
 
             JComboBox<String> gB = new JComboBox<>(new String[]{"Grade 11", "Grade 12"});
             gB.setSelectedItem(gradeVal);
@@ -6162,35 +6347,245 @@ public class QuizGame extends JFrame {
                 if (quizDb.isAvailable()) quizDb.updateStudent(acc);
                 studentAccounts.put(nameVal.toLowerCase(), acc);
                 saveStudentAccounts();
-                reloadData.run();
+                reloadBrowseTable.run();
                 JOptionPane.showMessageDialog(dialog, "Account updated successfully!");
             }
         });
 
         btnDelete.addActionListener(e -> {
-            int selectedRow = table.getSelectedRow();
+            int selectedRow = browseTable.getSelectedRow();
             if (selectedRow < 0) {
                 JOptionPane.showMessageDialog(dialog, "Please select an account row to delete.", "Selection Required", JOptionPane.WARNING_MESSAGE);
                 return;
             }
-            int modelRow = table.convertRowIndexToModel(selectedRow);
-            String nameVal = (String) model.getValueAt(modelRow, 0);
+            int modelRow = browseTable.convertRowIndexToModel(selectedRow);
+            String nameVal = String.valueOf(browseModel.getValueAt(modelRow, 0));
             int confirm = JOptionPane.showConfirmDialog(dialog, "Are you sure you want to delete student account '" + nameVal + "'?", "Confirm Delete", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm == JOptionPane.YES_OPTION) {
                 if (quizDb.isAvailable()) quizDb.deleteStudent(nameVal);
                 studentAccounts.remove(nameVal.toLowerCase());
                 saveStudentAccounts();
-                reloadData.run();
+                reloadBrowseTable.run();
                 JOptionPane.showMessageDialog(dialog, "Account deleted.");
             }
         });
 
-        btnClose.addActionListener(e -> dialog.dispose());
+        tabbedPane.addTab("📋 Browse Data", browsePanel);
 
-        bottomPanel.add(btnEdit);
-        bottomPanel.add(btnDelete);
+        // ==========================================
+        // TAB 2: DB STRUCTURE
+        // ==========================================
+        JPanel structPanel = new JPanel(new BorderLayout(0, 10));
+        structPanel.setOpaque(false);
+        structPanel.setBorder(BorderFactory.createEmptyBorder(10, 8, 8, 8));
+
+        JPanel structTop = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
+        structTop.setOpaque(false);
+        JLabel structSummaryLbl = new JLabel("Table Columns & Schema");
+        structSummaryLbl.setFont(pixelFont(Font.BOLD, 14));
+        structSummaryLbl.setForeground(GOLD_LIGHT);
+        structTop.add(structSummaryLbl);
+        structPanel.add(structTop, BorderLayout.NORTH);
+
+        String[] structCols = {"CID", "Field Name", "Data Type", "Primary Key", "Not Null", "Default Value"};
+        DefaultTableModel structModel = new DefaultTableModel(structCols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        JTable structTable = new JTable(structModel);
+        structTable.setRowHeight(26);
+        structTable.setFont(pixelFont(Font.PLAIN, 13));
+        structTable.getTableHeader().setFont(pixelFont(Font.BOLD, 13));
+        structTable.setBackground(new Color(30, 41, 59));
+        structTable.setForeground(Color.WHITE);
+        structTable.getTableHeader().setBackground(new Color(51, 65, 85));
+        structTable.getTableHeader().setForeground(GOLD_LIGHT);
+
+        JScrollPane structScroll = new JScrollPane(structTable);
+        structScroll.setPreferredSize(new Dimension(800, 200));
+        structScroll.getViewport().setBackground(new Color(15, 23, 42));
+        structScroll.setBorder(BorderFactory.createLineBorder(new Color(51, 65, 85)));
+
+        // DDL Statement View
+        JPanel ddlPanel = new JPanel(new BorderLayout(0, 4));
+        ddlPanel.setOpaque(false);
+        JPanel ddlHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        ddlHeader.setOpaque(false);
+        JLabel ddlLbl = new JLabel("CREATE TABLE DDL (Schema):");
+        ddlLbl.setFont(pixelFont(Font.BOLD, 12));
+        ddlLbl.setForeground(GOLD_LIGHT);
+        JButton btnCopyDdl = createFantasyButton("📋 Copy DDL");
+        btnCopyDdl.setPreferredSize(new Dimension(120, 28));
+        ddlHeader.add(ddlLbl);
+        ddlHeader.add(btnCopyDdl);
+        ddlPanel.add(ddlHeader, BorderLayout.NORTH);
+
+        JTextArea ddlArea = new JTextArea(4, 50);
+        ddlArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        ddlArea.setForeground(new Color(200, 230, 255));
+        ddlArea.setBackground(new Color(8, 14, 22));
+        ddlArea.setEditable(false);
+        ddlArea.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        JScrollPane ddlScroll = new JScrollPane(ddlArea);
+        ddlScroll.setBorder(BorderFactory.createLineBorder(new Color(51, 65, 85)));
+        ddlPanel.add(ddlScroll, BorderLayout.CENTER);
+
+        btnCopyDdl.addActionListener(e -> {
+            String sql = ddlArea.getText();
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(sql), null);
+            JOptionPane.showMessageDialog(dialog, "CREATE TABLE DDL copied to clipboard!");
+        });
+
+        JSplitPane structSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, structScroll, ddlPanel);
+        structSplit.setResizeWeight(0.6);
+        structSplit.setOpaque(false);
+        structSplit.setBorder(null);
+        structPanel.add(structSplit, BorderLayout.CENTER);
+
+        Runnable reloadStructTable = () -> {
+            String curTbl = (String) tableCombo.getSelectedItem();
+            if (curTbl == null || curTbl.isEmpty()) curTbl = "student_accounts";
+            structModel.setRowCount(0);
+            List<QuizDatabase.ColumnMeta> cols = quizDb.getTableColumns(curTbl);
+            int rowCount = quizDb.getTableRowCount(curTbl);
+            structSummaryLbl.setText("Table: " + curTbl + "  |  " + rowCount + " rows  |  " + cols.size() + " columns");
+            for (QuizDatabase.ColumnMeta c : cols) {
+                structModel.addRow(new Object[]{
+                    "#" + c.cid,
+                    c.name,
+                    c.type != null ? c.type.toUpperCase(java.util.Locale.ROOT) : "TEXT",
+                    c.isPrimaryKey ? "🔑 YES (PK)" : "-",
+                    c.notNull ? "NOT NULL" : "NULLABLE",
+                    c.defaultValue != null ? c.defaultValue : "(none)"
+                });
+            }
+            String ddl = quizDb.getTableSql(curTbl);
+            ddlArea.setText(ddl.isEmpty() ? "-- No DDL found" : ddl);
+        };
+
+        tabbedPane.addTab("🏗️ DB Structure", structPanel);
+
+        // ==========================================
+        // TAB 3: SQL CONSOLE
+        // ==========================================
+        JPanel sqlPanel = new JPanel(new BorderLayout(0, 8));
+        sqlPanel.setOpaque(false);
+        sqlPanel.setBorder(BorderFactory.createEmptyBorder(10, 8, 8, 8));
+
+        // Snippets and Query Editor
+        JPanel sqlTop = new JPanel(new BorderLayout(0, 6));
+        sqlTop.setOpaque(false);
+
+        JPanel snippetRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        snippetRow.setOpaque(false);
+        JLabel snipLbl = new JLabel("Snippets:");
+        snipLbl.setForeground(Color.WHITE);
+        snipLbl.setFont(pixelFont(Font.BOLD, 12));
+        snippetRow.add(snipLbl);
+
+        JTextArea queryInput = new JTextArea(4, 50);
+        queryInput.setFont(new Font("Monospaced", Font.PLAIN, 13));
+        queryInput.setForeground(Color.WHITE);
+        queryInput.setBackground(new Color(8, 14, 22));
+        queryInput.setCaretColor(GOLD_LIGHT);
+        queryInput.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        queryInput.setText("SELECT * FROM student_accounts LIMIT 25;");
+
+        String[][] quickSnips = new String[][]{
+            {"SELECT *", "SELECT * FROM student_accounts LIMIT 25;"},
+            {"COUNT", "SELECT COUNT(*) FROM student_accounts;"},
+            {"PRAGMA", "PRAGMA table_info(student_accounts);"},
+            {"TABLES", "SELECT name FROM sqlite_master WHERE type='table';"},
+            {"CLEAR", ""}
+        };
+        for (String[] snip : quickSnips) {
+            JButton b = createFantasyButton(snip[0]);
+            b.setPreferredSize(new Dimension(snip[0].length() > 6 ? 100 : 70, 26));
+            b.setFont(pixelFont(Font.PLAIN, 11));
+            b.addActionListener(e -> {
+                String curTbl = (String) tableCombo.getSelectedItem();
+                if (curTbl == null || curTbl.isEmpty()) curTbl = "student_accounts";
+                queryInput.setText(snip[1].replace("student_accounts", curTbl));
+            });
+            snippetRow.add(b);
+        }
+
+        JButton btnRunSql = createFantasyButton("⚡ Run SQL Query");
+        btnRunSql.setPreferredSize(new Dimension(150, 28));
+        snippetRow.add(btnRunSql);
+        sqlTop.add(snippetRow, BorderLayout.NORTH);
+
+        JScrollPane queryScroll = new JScrollPane(queryInput);
+        queryScroll.setBorder(BorderFactory.createLineBorder(new Color(51, 65, 85)));
+        sqlTop.add(queryScroll, BorderLayout.CENTER);
+        sqlPanel.add(sqlTop, BorderLayout.NORTH);
+
+        // Results Console Area
+        JTextArea consoleArea = new JTextArea();
+        consoleArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        consoleArea.setForeground(new Color(150, 230, 180));
+        consoleArea.setBackground(new Color(8, 14, 22));
+        consoleArea.setEditable(false);
+        consoleArea.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        consoleArea.setText("Ready to execute SQL commands.\nClick 'Run SQL Query' to execute.");
+
+        JScrollPane consoleScroll = new JScrollPane(consoleArea);
+        consoleScroll.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(new Color(51, 65, 85)),
+                "Query Execution Output",
+                javax.swing.border.TitledBorder.LEFT,
+                javax.swing.border.TitledBorder.TOP,
+                pixelFont(Font.BOLD, 12),
+                GOLD_LIGHT
+        ));
+        consoleScroll.getViewport().setBackground(new Color(8, 14, 22));
+        sqlPanel.add(consoleScroll, BorderLayout.CENTER);
+
+        btnRunSql.addActionListener(e -> {
+            String sql = queryInput.getText().trim();
+            if (sql.isEmpty()) {
+                consoleArea.setText("Query is empty.");
+                return;
+            }
+            long start = System.currentTimeMillis();
+            String res = quizDb.executeRawQuery(sql);
+            long elapsed = System.currentTimeMillis() - start;
+            consoleArea.setText("-- Execution time: " + elapsed + " ms\n" + res);
+        });
+
+        tabbedPane.addTab("⚡ SQL Console", sqlPanel);
+        content.add(tabbedPane, BorderLayout.CENTER);
+
+        // Bottom Bar: Close
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 4));
+        bottomPanel.setOpaque(false);
+        JButton btnClose = createFantasyButton("Close");
+        btnClose.setPreferredSize(new Dimension(110, 36));
+        btnClose.addActionListener(e -> dialog.dispose());
         bottomPanel.add(btnClose);
         content.add(bottomPanel, BorderLayout.SOUTH);
+
+        // Synchronization & Listeners
+        tableCombo.addActionListener(e -> {
+            reloadBrowseTable.run();
+            reloadStructTable.run();
+            String curTbl = (String) tableCombo.getSelectedItem();
+            if (curTbl != null && !curTbl.isEmpty()) {
+                queryInput.setText("SELECT * FROM " + curTbl + " LIMIT 25;");
+            }
+        });
+
+        btnRefreshTables.addActionListener(e -> {
+            tableCombo.removeAllItems();
+            for (String tName : quizDb.getAllTableNames()) {
+                tableCombo.addItem(tName);
+            }
+            reloadBrowseTable.run();
+            reloadStructTable.run();
+            JOptionPane.showMessageDialog(dialog, "Tables refreshed!");
+        });
+
+        reloadBrowseTable.run();
+        reloadStructTable.run();
 
         dialog.setContentPane(content);
         dialog.setVisible(true);

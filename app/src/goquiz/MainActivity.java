@@ -202,6 +202,171 @@ public class MainActivity extends Activity {
                 }
             } catch (Exception ignored) {}
         }
+
+        static class ColumnMeta {
+            int cid;
+            String name;
+            String type;
+            boolean notNull;
+            String defaultValue;
+            boolean isPrimaryKey;
+        }
+
+        public synchronized List<String> getAllTableNames() {
+            List<String> tables = new ArrayList<>();
+            SQLiteDatabase db = getReadableDatabase();
+            Cursor c = null;
+            try {
+                c = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'android_%' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC", null);
+                if (c != null && c.moveToFirst()) {
+                    do {
+                        tables.add(c.getString(0));
+                    } while (c.moveToNext());
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (c != null) c.close();
+            }
+            if (tables.isEmpty()) tables.add(TABLE_STUDENTS);
+            return tables;
+        }
+
+        public synchronized List<ColumnMeta> getTableColumns(String tableName) {
+            List<ColumnMeta> columns = new ArrayList<>();
+            SQLiteDatabase db = getReadableDatabase();
+            Cursor c = null;
+            try {
+                c = db.rawQuery("PRAGMA table_info(" + tableName + ")", null);
+                if (c != null && c.moveToFirst()) {
+                    int colCid = c.getColumnIndex("cid");
+                    int colName = c.getColumnIndex("name");
+                    int colType = c.getColumnIndex("type");
+                    int colNotNull = c.getColumnIndex("notnull");
+                    int colDflt = c.getColumnIndex("dflt_value");
+                    int colPk = c.getColumnIndex("pk");
+                    do {
+                        ColumnMeta meta = new ColumnMeta();
+                        meta.cid = colCid != -1 ? c.getInt(colCid) : 0;
+                        meta.name = colName != -1 ? c.getString(colName) : "";
+                        meta.type = colType != -1 ? c.getString(colType) : "TEXT";
+                        meta.notNull = colNotNull != -1 && c.getInt(colNotNull) == 1;
+                        meta.defaultValue = colDflt != -1 ? c.getString(colDflt) : null;
+                        meta.isPrimaryKey = colPk != -1 && c.getInt(colPk) > 0;
+                        columns.add(meta);
+                    } while (c.moveToNext());
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (c != null) c.close();
+            }
+            return columns;
+        }
+
+        public synchronized String getTableSql(String tableName) {
+            SQLiteDatabase db = getReadableDatabase();
+            Cursor c = null;
+            try {
+                c = db.rawQuery("SELECT sql FROM sqlite_master WHERE type='table' AND name = ?", new String[]{tableName});
+                if (c != null && c.moveToFirst()) {
+                    return c.getString(0);
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (c != null) c.close();
+            }
+            return "";
+        }
+
+        public synchronized int getTableRowCount(String tableName) {
+            SQLiteDatabase db = getReadableDatabase();
+            Cursor c = null;
+            try {
+                c = db.rawQuery("SELECT COUNT(*) FROM " + tableName, null);
+                if (c != null && c.moveToFirst()) {
+                    return c.getInt(0);
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (c != null) c.close();
+            }
+            return 0;
+        }
+
+        public synchronized List<Map<String, String>> queryTableData(String tableName, String searchQuery) {
+            List<Map<String, String>> rows = new ArrayList<>();
+            SQLiteDatabase db = getReadableDatabase();
+            Cursor c = null;
+            try {
+                c = db.rawQuery("SELECT * FROM " + tableName, null);
+                if (c != null && c.moveToFirst()) {
+                    String[] colNames = c.getColumnNames();
+                    String q = searchQuery == null ? "" : searchQuery.trim().toLowerCase(Locale.ROOT);
+                    do {
+                        Map<String, String> row = new LinkedHashMap<>();
+                        boolean match = q.isEmpty();
+                        for (String col : colNames) {
+                            int idx = c.getColumnIndex(col);
+                            String val = idx != -1 ? c.getString(idx) : "";
+                            if (val == null) val = "NULL";
+                            row.put(col, val);
+                            if (!match && val.toLowerCase(Locale.ROOT).contains(q)) {
+                                match = true;
+                            }
+                        }
+                        if (match) {
+                            rows.add(row);
+                        }
+                    } while (c.moveToNext());
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (c != null) c.close();
+            }
+            return rows;
+        }
+
+        public synchronized String executeRawQuery(String sql) {
+            if (sql == null || sql.trim().isEmpty()) return "Query is empty.";
+            SQLiteDatabase db = getWritableDatabase();
+            String trimmed = sql.trim();
+            String lower = trimmed.toLowerCase(Locale.ROOT);
+            if (lower.startsWith("select") || lower.startsWith("pragma") || lower.startsWith("explain")) {
+                Cursor c = null;
+                try {
+                    c = db.rawQuery(trimmed, null);
+                    if (c == null) return "No results returned.";
+                    StringBuilder sb = new StringBuilder();
+                    String[] cols = c.getColumnNames();
+                    for (int i = 0; i < cols.length; i++) {
+                        sb.append(cols[i]).append(i < cols.length - 1 ? " | " : "\n");
+                    }
+                    sb.append("--------------------------------------------------\n");
+                    int count = 0;
+                    if (c.moveToFirst()) {
+                        do {
+                            count++;
+                            for (int i = 0; i < cols.length; i++) {
+                                String val = c.getString(i);
+                                sb.append(val != null ? val : "NULL").append(i < cols.length - 1 ? " | " : "\n");
+                            }
+                        } while (c.moveToNext() && count < 100);
+                    }
+                    sb.append("\n(").append(count).append(" rows returned)");
+                    return sb.toString();
+                } catch (Exception e) {
+                    return "Error: " + e.getMessage();
+                } finally {
+                    if (c != null) c.close();
+                }
+            } else {
+                try {
+                    db.execSQL(trimmed);
+                    return "Query executed successfully.";
+                } catch (Exception e) {
+                    return "Error: " + e.getMessage();
+                }
+            }
+        }
     }
 
     // ==========================================
@@ -3589,186 +3754,637 @@ public class MainActivity extends Activity {
         float d = getResources().getDisplayMetrics().density;
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding((int) (18 * d), (int) (16 * d), (int) (18 * d), (int) (16 * d));
+        root.setPadding((int) (14 * d), (int) (12 * d), (int) (14 * d), (int) (12 * d));
         root.setBackgroundResource(R.drawable.card_panel);
 
-        TextView title = createStyledTextView("🛠️ SQLITE DB INSPECTOR", 18);
+        // Header Title
+        TextView title = createStyledTextView("🛠️ SQLITE DB INSPECTOR", 17);
         title.setTextColor(GOLD_LIGHT);
         title.setGravity(Gravity.CENTER_HORIZONTAL);
         root.addView(title);
 
-        TextView sub = createStyledTextView("goquiz.db • TABLE: student_accounts", 11);
+        TextView sub = createStyledTextView("goquiz.db • DB Browser (Mobile Scale)", 10);
         sub.setTextColor(MUTED);
         sub.setGravity(Gravity.CENTER_HORIZONTAL);
         root.addView(sub);
         addVerticalSpacing(root, 6);
 
-        final TextView countText = createStyledTextView("Loading...", 11);
-        countText.setTextColor(Color.rgb(120, 200, 255));
-        countText.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.addView(countText);
-        addVerticalSpacing(root, 6);
+        // Table Selector Row
+        LinearLayout tableSelectRow = new LinearLayout(this);
+        tableSelectRow.setOrientation(LinearLayout.HORIZONTAL);
+        tableSelectRow.setGravity(Gravity.CENTER_VERTICAL);
+        GradientDrawable tsBg = new GradientDrawable();
+        tsBg.setColor(Color.argb(160, 22, 27, 38));
+        tsBg.setCornerRadius(6 * d);
+        tsBg.setStroke((int) (1 * d), Color.argb(120, 60, 70, 90));
+        tableSelectRow.setBackground(tsBg);
+        tableSelectRow.setPadding((int) (8 * d), (int) (4 * d), (int) (8 * d), (int) (4 * d));
 
-        EditText search = createStyledEditText("Search students by name, grade, section...");
-        search.setTextSize(12);
-        search.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
-        root.addView(search);
-        addVerticalSpacing(root, 8);
+        TextView tblLabel = createStyledTextView("Table:", 11);
+        tblLabel.setTextColor(GOLD_LIGHT);
+        tblLabel.setTypeface(Typeface.DEFAULT_BOLD);
+        tableSelectRow.addView(tblLabel);
 
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                (int) (260 * d)
-        );
-        scroll.setLayoutParams(scrollParams);
+        final List<String> tableList = new ArrayList<>(dbHelper.getAllTableNames());
+        final String[] activeTable = new String[]{tableList.isEmpty() ? QuizDatabaseHelper.TABLE_STUDENTS : tableList.get(0)};
 
-        LinearLayout listContainer = new LinearLayout(this);
-        listContainer.setOrientation(LinearLayout.VERTICAL);
-        scroll.addView(listContainer);
-        root.addView(scroll);
-        addVerticalSpacing(root, 10);
-
-        final Runnable[] refreshRef = new Runnable[1];
-        refreshRef[0] = () -> {
-            listContainer.removeAllViews();
-            String query = search.getText().toString().trim().toLowerCase(Locale.ROOT);
-            List<Account> all = dbHelper.getAllStudents();
-            List<Account> filtered = new ArrayList<>();
-            for (Account a : all) {
-                if (query.isEmpty() ||
-                        a.name.toLowerCase(Locale.ROOT).contains(query) ||
-                        a.grade.toLowerCase(Locale.ROOT).contains(query) ||
-                        a.section.toLowerCase(Locale.ROOT).contains(query)) {
-                    filtered.add(a);
+        final Spinner tableSpinner = new Spinner(this);
+        ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, tableList) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                View v = super.getView(position, convertView, parent);
+                if (v instanceof TextView) {
+                    ((TextView) v).setTextColor(Color.WHITE);
+                    ((TextView) v).setTextSize(12);
+                    ((TextView) v).setTypeface(Typeface.DEFAULT_BOLD);
                 }
+                return v;
             }
-            countText.setText("Registered Accounts: " + filtered.size() + " of " + all.size());
-
-            if (filtered.isEmpty()) {
-                TextView empty = createStyledTextView(all.isEmpty() ? "No student accounts in SQLite database yet." : "No accounts match your search.", 12);
-                empty.setTextColor(MUTED);
-                empty.setGravity(Gravity.CENTER);
-                empty.setPadding(0, (int) (30 * d), 0, 0);
-                listContainer.addView(empty);
-                return;
-            }
-
-            for (Account a : filtered) {
-                LinearLayout card = new LinearLayout(this);
-                card.setOrientation(LinearLayout.VERTICAL);
-                card.setPadding((int) (10 * d), (int) (8 * d), (int) (10 * d), (int) (8 * d));
-                GradientDrawable bg = new GradientDrawable();
-                bg.setColor(Color.argb(160, 25, 28, 38));
-                bg.setCornerRadius(6 * d);
-                bg.setStroke((int) (1 * d), Color.argb(140, 70, 75, 95));
-                card.setBackground(bg);
-
-                // Row 1: Name + Gender Badge
-                LinearLayout row1 = new LinearLayout(this);
-                row1.setOrientation(LinearLayout.HORIZONTAL);
-                row1.setGravity(Gravity.CENTER_VERTICAL);
-
-                TextView nameView = createStyledTextView(a.name, 14);
-                nameView.setTextColor(GOLD_LIGHT);
-                LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-                nameView.setLayoutParams(nameParams);
-                row1.addView(nameView);
-
-                TextView genBadge = createStyledTextView("Female".equalsIgnoreCase(a.gender) ? "♀ Girl" : "♂ Boy", 10);
-                genBadge.setTextColor("Female".equalsIgnoreCase(a.gender) ? Color.rgb(255, 140, 180) : Color.rgb(100, 180, 255));
-                genBadge.setPadding((int) (6 * d), (int) (2 * d), (int) (6 * d), (int) (2 * d));
-                GradientDrawable genBg = new GradientDrawable();
-                genBg.setColor(Color.argb(80, 40, 45, 60));
-                genBg.setCornerRadius(4 * d);
-                genBadge.setBackground(genBg);
-                row1.addView(genBadge);
-                card.addView(row1);
-
-                // Row 2: Details (Grade, Section, Password)
-                TextView details = createStyledTextView(a.grade + " • " + a.section + "  |  Password: " + a.password, 11);
-                details.setTextColor(TEXT);
-                card.addView(details);
-                addVerticalSpacing(card, 4);
-
-                // Row 3: Action Buttons (Edit, Delete)
-                LinearLayout actions = new LinearLayout(this);
-                actions.setOrientation(LinearLayout.HORIZONTAL);
-                actions.setGravity(Gravity.END);
-
-                Button editBtn = createStyledButton("EDIT");
-                setButtonFantasyStyle(editBtn, Color.rgb(35, 60, 95), Color.rgb(120, 200, 255));
-                editBtn.setTextSize(10);
-                editBtn.setPadding((int) (10 * d), (int) (2 * d), (int) (10 * d), (int) (2 * d));
-                actions.addView(editBtn);
-
-                View spacer = new View(this);
-                actions.addView(spacer, new LinearLayout.LayoutParams((int) (8 * d), 1));
-
-                Button delBtn = createStyledButton("DELETE");
-                setButtonFantasyStyle(delBtn, Color.rgb(85, 30, 30), Color.rgb(255, 120, 120));
-                delBtn.setTextSize(10);
-                delBtn.setPadding((int) (10 * d), (int) (2 * d), (int) (10 * d), (int) (2 * d));
-                actions.addView(delBtn);
-
-                card.addView(actions);
-                listContainer.addView(card);
-                addVerticalSpacing(listContainer, 6);
-
-                editBtn.setOnClickListener(v -> showEditStudentDialog(a, refreshRef[0]));
-                delBtn.setOnClickListener(v -> {
-                    showFantasyConfirmDialog(
-                            "DELETE STUDENT?",
-                            "Are you sure you want to delete student account \"" + a.name + "\" from SQLite?",
-                            "DELETE",
-                            "CANCEL",
-                            () -> {
-                                dbHelper.deleteStudent(a.name);
-                                refreshRef[0].run();
-                            }
-                    );
-                });
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                View v = super.getDropDownView(position, convertView, parent);
+                if (v instanceof TextView) {
+                    ((TextView) v).setTextColor(Color.WHITE);
+                    ((TextView) v).setBackgroundColor(Color.rgb(24, 30, 44));
+                    ((TextView) v).setPadding((int) (12 * d), (int) (8 * d), (int) (12 * d), (int) (8 * d));
+                }
+                return v;
             }
         };
+        tableSpinner.setAdapter(spinnerAdapter);
+        LinearLayout.LayoutParams spLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        spLp.setMargins((int) (6 * d), 0, (int) (6 * d), 0);
+        tableSpinner.setLayoutParams(spLp);
+        tableSelectRow.addView(tableSpinner);
 
-        search.addTextChangedListener(new android.text.TextWatcher() {
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            public void onTextChanged(CharSequence s, int start, int before, int count) { refreshRef[0].run(); }
-            public void afterTextChanged(android.text.Editable s) {}
-        });
+        Button refreshTablesBtn = createStyledButton("🔄");
+        refreshTablesBtn.setTextSize(11);
+        setButtonFantasyStyle(refreshTablesBtn, Color.rgb(38, 48, 68), GOLD_LIGHT);
+        refreshTablesBtn.setPadding((int) (8 * d), (int) (2 * d), (int) (8 * d), (int) (2 * d));
+        tableSelectRow.addView(refreshTablesBtn);
+        root.addView(tableSelectRow);
+        addVerticalSpacing(root, 6);
 
-        refreshRef[0].run();
+        // Tab Navigation Buttons: [ 📋 BROWSE DATA ] [ 🏗️ DB STRUCTURE ] [ ⚡ SQL CONSOLE ]
+        LinearLayout tabRow = new LinearLayout(this);
+        tabRow.setOrientation(LinearLayout.HORIZONTAL);
+        tabRow.setGravity(Gravity.CENTER);
 
-        // Bottom Controls: Add Account, Export JSON, Close
+        Button tabBrowseBtn = createStyledButton("📋 BROWSE");
+        Button tabStructBtn = createStyledButton("🏗️ STRUCTURE");
+        Button tabSqlBtn = createStyledButton("⚡ SQL");
+
+        tabBrowseBtn.setTextSize(10);
+        tabStructBtn.setTextSize(10);
+        tabSqlBtn.setTextSize(10);
+        tabBrowseBtn.setPadding((int) (4 * d), (int) (4 * d), (int) (4 * d), (int) (4 * d));
+        tabStructBtn.setPadding((int) (4 * d), (int) (4 * d), (int) (4 * d), (int) (4 * d));
+        tabSqlBtn.setPadding((int) (4 * d), (int) (4 * d), (int) (4 * d), (int) (4 * d));
+
+        LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(0, (int) (32 * d), 1.0f);
+        tabLp.setMargins((int) (2 * d), 0, (int) (2 * d), 0);
+        tabRow.addView(tabBrowseBtn, tabLp);
+        tabRow.addView(tabStructBtn, tabLp);
+        tabRow.addView(tabSqlBtn, tabLp);
+        root.addView(tabRow);
+        addVerticalSpacing(root, 6);
+
+        // Tab Content Area (Scrollable Frame)
+        FrameLayout tabContainer = new FrameLayout(this);
+        LinearLayout.LayoutParams tcLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1.0f
+        );
+        tabContainer.setLayoutParams(tcLp);
+        root.addView(tabContainer);
+        addVerticalSpacing(root, 6);
+
+        // Bottom Controls Container
         LinearLayout bottomRow = new LinearLayout(this);
         bottomRow.setOrientation(LinearLayout.HORIZONTAL);
         bottomRow.setGravity(Gravity.CENTER_HORIZONTAL);
 
-        Button addBtn = createStyledButton("+ ADD ACCOUNT");
+        Button addBtn = createStyledButton("+ ADD ACC");
         setButtonFantasyStyle(addBtn, Color.rgb(40, 80, 50), Color.rgb(120, 255, 150));
-        addBtn.setTextSize(11);
-        addBtn.setPadding((int) (8 * d), (int) (4 * d), (int) (8 * d), (int) (4 * d));
-        bottomRow.addView(addBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
-
-        View bSpacer1 = new View(this);
-        bottomRow.addView(bSpacer1, new LinearLayout.LayoutParams((int) (6 * d), 1));
+        addBtn.setTextSize(10);
+        addBtn.setPadding((int) (6 * d), (int) (4 * d), (int) (6 * d), (int) (4 * d));
 
         Button exportBtn = createStyledButton("EXPORT JSON");
         setButtonFantasyStyle(exportBtn, Color.rgb(45, 50, 70), GOLD_LIGHT);
-        exportBtn.setTextSize(11);
-        exportBtn.setPadding((int) (8 * d), (int) (4 * d), (int) (8 * d), (int) (4 * d));
-        bottomRow.addView(exportBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
-
-        View bSpacer2 = new View(this);
-        bottomRow.addView(bSpacer2, new LinearLayout.LayoutParams((int) (6 * d), 1));
+        exportBtn.setTextSize(10);
+        exportBtn.setPadding((int) (6 * d), (int) (4 * d), (int) (6 * d), (int) (4 * d));
 
         Button closeBtn = createStyledButton("CLOSE");
-        closeBtn.setTextSize(11);
-        closeBtn.setPadding((int) (8 * d), (int) (4 * d), (int) (8 * d), (int) (4 * d));
-        bottomRow.addView(closeBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f));
+        closeBtn.setTextSize(10);
+        closeBtn.setPadding((int) (6 * d), (int) (4 * d), (int) (6 * d), (int) (4 * d));
 
+        bottomRow.addView(addBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        View bSp1 = new View(this);
+        bottomRow.addView(bSp1, new LinearLayout.LayoutParams((int) (4 * d), 1));
+        bottomRow.addView(exportBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        View bSp2 = new View(this);
+        bottomRow.addView(bSp2, new LinearLayout.LayoutParams((int) (4 * d), 1));
+        bottomRow.addView(closeBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f));
         root.addView(bottomRow);
 
-        addBtn.setOnClickListener(v -> showAddStudentDialog(refreshRef[0]));
+        final int[] currentTab = new int[]{0}; // 0 = Browse, 1 = Structure, 2 = SQL
+        final Runnable[] renderActiveTab = new Runnable[1];
+
+        // --- TAB 1: BROWSE DATA VIEW GENERATOR ---
+        java.util.function.Supplier<View> buildBrowseView = () -> {
+            LinearLayout bv = new LinearLayout(this);
+            bv.setOrientation(LinearLayout.VERTICAL);
+
+            final TextView countText = createStyledTextView("Loading records...", 10);
+            countText.setTextColor(Color.rgb(130, 205, 255));
+            countText.setGravity(Gravity.CENTER_HORIZONTAL);
+            bv.addView(countText);
+            addVerticalSpacing(bv, 4);
+
+            EditText search = createStyledEditText("Filter table records...");
+            search.setTextSize(11);
+            search.setPadding((int) (8 * d), (int) (5 * d), (int) (8 * d), (int) (5 * d));
+            bv.addView(search);
+            addVerticalSpacing(bv, 6);
+
+            ScrollView scroll = new ScrollView(this);
+            scroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+
+            LinearLayout recordsContainer = new LinearLayout(this);
+            recordsContainer.setOrientation(LinearLayout.VERTICAL);
+            scroll.addView(recordsContainer);
+            bv.addView(scroll);
+
+            Runnable loadRows = () -> {
+                recordsContainer.removeAllViews();
+                String filter = search.getText().toString().trim();
+                String curTbl = activeTable[0];
+
+                if (QuizDatabaseHelper.TABLE_STUDENTS.equals(curTbl)) {
+                    List<Account> all = dbHelper.getAllStudents();
+                    List<Account> filtered = new ArrayList<>();
+                    String q = filter.toLowerCase(Locale.ROOT);
+                    for (Account a : all) {
+                        if (q.isEmpty() ||
+                                a.name.toLowerCase(Locale.ROOT).contains(q) ||
+                                a.grade.toLowerCase(Locale.ROOT).contains(q) ||
+                                a.section.toLowerCase(Locale.ROOT).contains(q)) {
+                            filtered.add(a);
+                        }
+                    }
+                    countText.setText("Showing " + filtered.size() + " of " + all.size() + " records in " + curTbl);
+
+                    if (filtered.isEmpty()) {
+                        TextView empty = createStyledTextView(all.isEmpty() ? "No student accounts in SQLite database yet." : "No accounts match your filter.", 11);
+                        empty.setTextColor(MUTED);
+                        empty.setGravity(Gravity.CENTER);
+                        empty.setPadding(0, (int) (30 * d), 0, 0);
+                        recordsContainer.addView(empty);
+                        return;
+                    }
+
+                    for (Account a : filtered) {
+                        LinearLayout card = new LinearLayout(this);
+                        card.setOrientation(LinearLayout.VERTICAL);
+                        card.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
+                        GradientDrawable cBg = new GradientDrawable();
+                        cBg.setColor(Color.argb(160, 25, 28, 38));
+                        cBg.setCornerRadius(6 * d);
+                        cBg.setStroke((int) (1 * d), Color.argb(140, 70, 75, 95));
+                        card.setBackground(cBg);
+
+                        LinearLayout r1 = new LinearLayout(this);
+                        r1.setOrientation(LinearLayout.HORIZONTAL);
+                        r1.setGravity(Gravity.CENTER_VERTICAL);
+
+                        TextView nameView = createStyledTextView(a.name, 13);
+                        nameView.setTextColor(GOLD_LIGHT);
+                        nameView.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+                        r1.addView(nameView);
+
+                        TextView genBadge = createStyledTextView("Female".equalsIgnoreCase(a.gender) ? "♀ Girl" : "♂ Boy", 9);
+                        genBadge.setTextColor("Female".equalsIgnoreCase(a.gender) ? Color.rgb(255, 140, 180) : Color.rgb(100, 180, 255));
+                        genBadge.setPadding((int) (5 * d), (int) (2 * d), (int) (5 * d), (int) (2 * d));
+                        GradientDrawable genBg = new GradientDrawable();
+                        genBg.setColor(Color.argb(80, 40, 45, 60));
+                        genBg.setCornerRadius(4 * d);
+                        genBadge.setBackground(genBg);
+                        r1.addView(genBadge);
+                        card.addView(r1);
+
+                        TextView details = createStyledTextView(a.grade + " • " + a.section + "  |  Password: " + a.password, 10);
+                        details.setTextColor(TEXT);
+                        card.addView(details);
+                        addVerticalSpacing(card, 4);
+
+                        LinearLayout actions = new LinearLayout(this);
+                        actions.setOrientation(LinearLayout.HORIZONTAL);
+                        actions.setGravity(Gravity.END);
+
+                        Button editBtn = createStyledButton("EDIT");
+                        setButtonFantasyStyle(editBtn, Color.rgb(35, 60, 95), Color.rgb(120, 200, 255));
+                        editBtn.setTextSize(9);
+                        editBtn.setPadding((int) (8 * d), (int) (2 * d), (int) (8 * d), (int) (2 * d));
+                        actions.addView(editBtn);
+
+                        View sp = new View(this);
+                        actions.addView(sp, new LinearLayout.LayoutParams((int) (6 * d), 1));
+
+                        Button delBtn = createStyledButton("DELETE");
+                        setButtonFantasyStyle(delBtn, Color.rgb(85, 30, 30), Color.rgb(255, 120, 120));
+                        delBtn.setTextSize(9);
+                        delBtn.setPadding((int) (8 * d), (int) (2 * d), (int) (8 * d), (int) (2 * d));
+                        actions.addView(delBtn);
+
+                        card.addView(actions);
+                        recordsContainer.addView(card);
+                        addVerticalSpacing(recordsContainer, 5);
+
+                        editBtn.setOnClickListener(v -> showEditStudentDialog(a, () -> renderActiveTab[0].run()));
+                        delBtn.setOnClickListener(v -> showFantasyConfirmDialog(
+                                "DELETE STUDENT?",
+                                "Are you sure you want to delete student account \"" + a.name + "\" from SQLite?",
+                                "DELETE",
+                                "CANCEL",
+                                () -> {
+                                    dbHelper.deleteStudent(a.name);
+                                    renderActiveTab[0].run();
+                                }
+                        ));
+                    }
+                } else {
+                    // Generic Table Data View (Horizontal Scrollable Grid Table)
+                    List<Map<String, String>> rows = dbHelper.queryTableData(curTbl, filter);
+                    int totalCount = dbHelper.getTableRowCount(curTbl);
+                    countText.setText("Showing " + rows.size() + " of " + totalCount + " records in " + curTbl);
+
+                    if (rows.isEmpty()) {
+                        TextView empty = createStyledTextView("No records found in " + curTbl + ".", 11);
+                        empty.setTextColor(MUTED);
+                        empty.setGravity(Gravity.CENTER);
+                        empty.setPadding(0, (int) (30 * d), 0, 0);
+                        recordsContainer.addView(empty);
+                        return;
+                    }
+
+                    HorizontalScrollView hScroll = new HorizontalScrollView(this);
+                    LinearLayout tableLayout = new LinearLayout(this);
+                    tableLayout.setOrientation(LinearLayout.VERTICAL);
+
+                    // Header Row
+                    LinearLayout headerRow = new LinearLayout(this);
+                    headerRow.setOrientation(LinearLayout.HORIZONTAL);
+                    headerRow.setBackgroundColor(Color.argb(200, 35, 45, 65));
+                    headerRow.setPadding((int) (6 * d), (int) (4 * d), (int) (6 * d), (int) (4 * d));
+
+                    Map<String, String> firstRow = rows.get(0);
+                    for (String colName : firstRow.keySet()) {
+                        TextView colHeader = createStyledTextView(colName, 10);
+                        colHeader.setTextColor(GOLD_LIGHT);
+                        colHeader.setTypeface(Typeface.DEFAULT_BOLD);
+                        colHeader.setWidth((int) (110 * d));
+                        colHeader.setPadding((int) (4 * d), (int) (2 * d), (int) (4 * d), (int) (2 * d));
+                        headerRow.addView(colHeader);
+                    }
+                    tableLayout.addView(headerRow);
+
+                    // Data Rows
+                    int rowIdx = 0;
+                    for (Map<String, String> rowData : rows) {
+                        LinearLayout dataRow = new LinearLayout(this);
+                        dataRow.setOrientation(LinearLayout.HORIZONTAL);
+                        dataRow.setBackgroundColor(rowIdx % 2 == 0 ? Color.argb(120, 20, 25, 35) : Color.argb(140, 28, 35, 48));
+                        dataRow.setPadding((int) (6 * d), (int) (3 * d), (int) (6 * d), (int) (3 * d));
+
+                        for (String colName : firstRow.keySet()) {
+                            String val = rowData.get(colName);
+                            TextView cell = createStyledTextView(val != null ? val : "NULL", 10);
+                            cell.setTextColor(TEXT);
+                            cell.setWidth((int) (110 * d));
+                            cell.setPadding((int) (4 * d), (int) (2 * d), (int) (4 * d), (int) (2 * d));
+                            dataRow.addView(cell);
+                        }
+                        tableLayout.addView(dataRow);
+                        rowIdx++;
+                    }
+
+                    hScroll.addView(tableLayout);
+                    recordsContainer.addView(hScroll);
+                }
+            };
+
+            search.addTextChangedListener(new android.text.TextWatcher() {
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                public void onTextChanged(CharSequence s, int start, int before, int count) { loadRows.run(); }
+                public void afterTextChanged(android.text.Editable s) {}
+            });
+
+            loadRows.run();
+            return bv;
+        };
+
+        // --- TAB 2: DB STRUCTURE VIEW GENERATOR ---
+        java.util.function.Supplier<View> buildStructureView = () -> {
+            ScrollView sv = new ScrollView(this);
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            sv.addView(layout);
+
+            String curTbl = activeTable[0];
+            List<QuizDatabaseHelper.ColumnMeta> cols = dbHelper.getTableColumns(curTbl);
+            int rowCount = dbHelper.getTableRowCount(curTbl);
+
+            // Table Meta Summary Card
+            LinearLayout summaryCard = new LinearLayout(this);
+            summaryCard.setOrientation(LinearLayout.VERTICAL);
+            summaryCard.setPadding((int) (10 * d), (int) (8 * d), (int) (10 * d), (int) (8 * d));
+            GradientDrawable sBg = new GradientDrawable();
+            sBg.setColor(Color.argb(160, 25, 30, 42));
+            sBg.setCornerRadius(6 * d);
+            sBg.setStroke((int) (1 * d), Color.argb(120, 60, 75, 100));
+            summaryCard.setBackground(sBg);
+
+            TextView sumTitle = createStyledTextView("TABLE SUMMARY: " + curTbl, 12);
+            sumTitle.setTextColor(GOLD_LIGHT);
+            sumTitle.setTypeface(Typeface.DEFAULT_BOLD);
+            summaryCard.addView(sumTitle);
+
+            TextView sumDetails = createStyledTextView("Total Records: " + rowCount + "  |  Total Columns: " + cols.size(), 10);
+            sumDetails.setTextColor(TEXT);
+            summaryCard.addView(sumDetails);
+            layout.addView(summaryCard);
+            addVerticalSpacing(layout, 8);
+
+            // Fields Table Header
+            TextView fieldsHeader = createStyledTextView("COLUMNS & DATA TYPES (table_info)", 11);
+            fieldsHeader.setTextColor(GOLD_LIGHT);
+            fieldsHeader.setTypeface(Typeface.DEFAULT_BOLD);
+            layout.addView(fieldsHeader);
+            addVerticalSpacing(layout, 4);
+
+            for (QuizDatabaseHelper.ColumnMeta col : cols) {
+                LinearLayout colRow = new LinearLayout(this);
+                colRow.setOrientation(LinearLayout.VERTICAL);
+                colRow.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
+                GradientDrawable cBg = new GradientDrawable();
+                cBg.setColor(Color.argb(140, 20, 24, 34));
+                cBg.setCornerRadius(4 * d);
+                cBg.setStroke((int) (1 * d), Color.argb(100, 50, 60, 80));
+                colRow.setBackground(cBg);
+
+                LinearLayout r1 = new LinearLayout(this);
+                r1.setOrientation(LinearLayout.HORIZONTAL);
+                r1.setGravity(Gravity.CENTER_VERTICAL);
+
+                TextView nameView = createStyledTextView("#" + col.cid + "  " + col.name, 12);
+                nameView.setTextColor(Color.WHITE);
+                nameView.setTypeface(Typeface.DEFAULT_BOLD);
+                nameView.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+                r1.addView(nameView);
+
+                // Type Badge
+                TextView typeBadge = createStyledTextView(col.type.toUpperCase(Locale.ROOT), 9);
+                typeBadge.setTextColor(Color.rgb(100, 210, 255));
+                typeBadge.setPadding((int) (5 * d), (int) (2 * d), (int) (5 * d), (int) (2 * d));
+                GradientDrawable tBg = new GradientDrawable();
+                tBg.setColor(Color.argb(80, 20, 50, 80));
+                tBg.setCornerRadius(3 * d);
+                typeBadge.setBackground(tBg);
+                r1.addView(typeBadge);
+                colRow.addView(r1);
+
+                // Constraint Badges
+                LinearLayout r2 = new LinearLayout(this);
+                r2.setOrientation(LinearLayout.HORIZONTAL);
+                r2.setGravity(Gravity.CENTER_VERTICAL);
+                r2.setPadding(0, (int) (3 * d), 0, 0);
+
+                if (col.isPrimaryKey) {
+                    TextView pkBadge = createStyledTextView("🔑 PRIMARY KEY", 8);
+                    pkBadge.setTextColor(GOLD_LIGHT);
+                    pkBadge.setPadding((int) (4 * d), (int) (1 * d), (int) (4 * d), (int) (1 * d));
+                    GradientDrawable pkBg = new GradientDrawable();
+                    pkBg.setColor(Color.argb(100, 100, 70, 20));
+                    pkBg.setCornerRadius(3 * d);
+                    pkBadge.setBackground(pkBg);
+                    r2.addView(pkBadge);
+                    View sp = new View(this);
+                    r2.addView(sp, new LinearLayout.LayoutParams((int) (4 * d), 1));
+                }
+
+                if (col.notNull) {
+                    TextView nnBadge = createStyledTextView("NOT NULL", 8);
+                    nnBadge.setTextColor(Color.rgb(255, 160, 120));
+                    nnBadge.setPadding((int) (4 * d), (int) (1 * d), (int) (4 * d), (int) (1 * d));
+                    GradientDrawable nnBg = new GradientDrawable();
+                    nnBg.setColor(Color.argb(80, 80, 40, 30));
+                    nnBg.setCornerRadius(3 * d);
+                    nnBadge.setBackground(nnBg);
+                    r2.addView(nnBadge);
+                    View sp = new View(this);
+                    r2.addView(sp, new LinearLayout.LayoutParams((int) (4 * d), 1));
+                }
+
+                if (col.defaultValue != null) {
+                    TextView defBadge = createStyledTextView("DEFAULT: " + col.defaultValue, 8);
+                    defBadge.setTextColor(Color.rgb(180, 220, 180));
+                    r2.addView(defBadge);
+                } else if (!col.isPrimaryKey && !col.notNull) {
+                    TextView defBadge = createStyledTextView("NULLABLE", 8);
+                    defBadge.setTextColor(MUTED);
+                    r2.addView(defBadge);
+                }
+
+                colRow.addView(r2);
+                layout.addView(colRow);
+                addVerticalSpacing(layout, 4);
+            }
+            addVerticalSpacing(layout, 6);
+
+            // DDL Schema Statement
+            LinearLayout ddlHeaderRow = new LinearLayout(this);
+            ddlHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
+            ddlHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
+
+            TextView ddlLabel = createStyledTextView("SCHEMA DDL (CREATE TABLE):", 11);
+            ddlLabel.setTextColor(GOLD_LIGHT);
+            ddlLabel.setTypeface(Typeface.DEFAULT_BOLD);
+            ddlLabel.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+            ddlHeaderRow.addView(ddlLabel);
+
+            Button copyDdlBtn = createStyledButton("📋 COPY SQL");
+            copyDdlBtn.setTextSize(9);
+            setButtonFantasyStyle(copyDdlBtn, Color.rgb(35, 45, 65), GOLD_LIGHT);
+            copyDdlBtn.setPadding((int) (6 * d), (int) (2 * d), (int) (6 * d), (int) (2 * d));
+            ddlHeaderRow.addView(copyDdlBtn);
+            layout.addView(ddlHeaderRow);
+            addVerticalSpacing(layout, 4);
+
+            final String sqlDdl = dbHelper.getTableSql(curTbl);
+            TextView ddlView = createStyledTextView(sqlDdl.isEmpty() ? "-- No DDL found" : sqlDdl, 10);
+            ddlView.setTypeface(Typeface.MONOSPACE);
+            ddlView.setTextColor(Color.rgb(200, 230, 255));
+            ddlView.setBackgroundColor(Color.argb(200, 15, 20, 30));
+            ddlView.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
+            layout.addView(ddlView);
+
+            copyDdlBtn.setOnClickListener(v -> {
+                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newPlainText("GoQuiz DDL", sqlDdl));
+                    Toast.makeText(this, "Copied CREATE TABLE DDL to clipboard!", Toast.LENGTH_SHORT).show();
+                }
+            });
+
+            return sv;
+        };
+
+        // --- TAB 3: SQL CONSOLE VIEW GENERATOR ---
+        java.util.function.Supplier<View> buildSqlView = () -> {
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+
+            // Quick Query Chips
+            HorizontalScrollView chipScroll = new HorizontalScrollView(this);
+            LinearLayout chipRow = new LinearLayout(this);
+            chipRow.setOrientation(LinearLayout.HORIZONTAL);
+
+            final EditText sqlInput = createStyledEditText("Write SQL Query...");
+            sqlInput.setTextSize(10);
+            sqlInput.setTypeface(Typeface.MONOSPACE);
+            sqlInput.setText("SELECT * FROM " + activeTable[0] + " LIMIT 25;");
+            sqlInput.setLines(3);
+            sqlInput.setGravity(Gravity.TOP | Gravity.START);
+            sqlInput.setBackgroundColor(Color.argb(180, 15, 20, 30));
+            sqlInput.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
+
+            String[][] snippets = new String[][]{
+                    {"SELECT *", "SELECT * FROM " + activeTable[0] + " LIMIT 25;"},
+                    {"COUNT", "SELECT COUNT(*) FROM " + activeTable[0] + ";"},
+                    {"PRAGMA", "PRAGMA table_info(" + activeTable[0] + ");"},
+                    {"TABLES", "SELECT name FROM sqlite_master WHERE type='table';"}
+            };
+
+            for (String[] snip : snippets) {
+                Button b = createStyledButton(snip[0]);
+                b.setTextSize(9);
+                setButtonFantasyStyle(b, Color.rgb(35, 45, 65), Color.rgb(180, 210, 255));
+                b.setPadding((int) (6 * d), (int) (2 * d), (int) (6 * d), (int) (2 * d));
+                chipRow.addView(b);
+                b.setOnClickListener(v -> sqlInput.setText(snip[1]));
+                View sp = new View(this);
+                chipRow.addView(sp, new LinearLayout.LayoutParams((int) (4 * d), 1));
+            }
+            chipScroll.addView(chipRow);
+            layout.addView(chipScroll);
+            addVerticalSpacing(layout, 6);
+
+            layout.addView(sqlInput);
+            addVerticalSpacing(layout, 6);
+
+            Button runBtn = createStyledButton("⚡ EXECUTE SQL QUERY");
+            runBtn.setTextSize(10);
+            setButtonFantasyStyle(runBtn, Color.rgb(30, 75, 45), Color.rgb(120, 255, 160));
+            runBtn.setPadding((int) (8 * d), (int) (4 * d), (int) (8 * d), (int) (4 * d));
+            layout.addView(runBtn);
+            addVerticalSpacing(layout, 6);
+
+            // Output Console Box
+            ScrollView consoleScroll = new ScrollView(this);
+            consoleScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+
+            HorizontalScrollView hConsole = new HorizontalScrollView(this);
+            final TextView consoleOutput = createStyledTextView("Ready to execute SQL commands.\nTap EXECUTE to run query.", 10);
+            consoleOutput.setTypeface(Typeface.MONOSPACE);
+            consoleOutput.setTextColor(Color.rgb(150, 230, 180));
+            consoleOutput.setBackgroundColor(Color.argb(220, 10, 14, 22));
+            consoleOutput.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
+            hConsole.addView(consoleOutput);
+            consoleScroll.addView(hConsole);
+            layout.addView(consoleScroll);
+
+            runBtn.setOnClickListener(v -> {
+                String q = sqlInput.getText().toString().trim();
+                if (q.isEmpty()) {
+                    consoleOutput.setText("Query is empty.");
+                    return;
+                }
+                long startMs = System.currentTimeMillis();
+                String res = dbHelper.executeRawQuery(q);
+                long elapsed = System.currentTimeMillis() - startMs;
+                consoleOutput.setText("-- Execution time: " + elapsed + " ms\n" + res);
+            });
+
+            return layout;
+        };
+
+        // Tab Renderer Switcher
+        renderActiveTab[0] = () -> {
+            tabContainer.removeAllViews();
+            if (currentTab[0] == 0) {
+                tabContainer.addView(buildBrowseView.get());
+                setButtonFantasyStyle(tabBrowseBtn, Color.rgb(116, 67, 18), GOLD_LIGHT);
+                setButtonFantasyStyle(tabStructBtn, Color.rgb(35, 42, 55), Color.rgb(100, 110, 130));
+                setButtonFantasyStyle(tabSqlBtn, Color.rgb(35, 42, 55), Color.rgb(100, 110, 130));
+                addBtn.setVisibility(QuizDatabaseHelper.TABLE_STUDENTS.equals(activeTable[0]) ? View.VISIBLE : View.GONE);
+                exportBtn.setVisibility(QuizDatabaseHelper.TABLE_STUDENTS.equals(activeTable[0]) ? View.VISIBLE : View.GONE);
+            } else if (currentTab[0] == 1) {
+                tabContainer.addView(buildStructureView.get());
+                setButtonFantasyStyle(tabBrowseBtn, Color.rgb(35, 42, 55), Color.rgb(100, 110, 130));
+                setButtonFantasyStyle(tabStructBtn, Color.rgb(116, 67, 18), GOLD_LIGHT);
+                setButtonFantasyStyle(tabSqlBtn, Color.rgb(35, 42, 55), Color.rgb(100, 110, 130));
+                addBtn.setVisibility(View.GONE);
+                exportBtn.setVisibility(View.GONE);
+            } else {
+                tabContainer.addView(buildSqlView.get());
+                setButtonFantasyStyle(tabBrowseBtn, Color.rgb(35, 42, 55), Color.rgb(100, 110, 130));
+                setButtonFantasyStyle(tabStructBtn, Color.rgb(35, 42, 55), Color.rgb(100, 110, 130));
+                setButtonFantasyStyle(tabSqlBtn, Color.rgb(116, 67, 18), GOLD_LIGHT);
+                addBtn.setVisibility(View.GONE);
+                exportBtn.setVisibility(View.GONE);
+            }
+        };
+
+        tabBrowseBtn.setOnClickListener(v -> {
+            currentTab[0] = 0;
+            renderActiveTab[0].run();
+        });
+        tabStructBtn.setOnClickListener(v -> {
+            currentTab[0] = 1;
+            renderActiveTab[0].run();
+        });
+        tabSqlBtn.setOnClickListener(v -> {
+            currentTab[0] = 2;
+            renderActiveTab[0].run();
+        });
+
+        tableSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (position >= 0 && position < tableList.size()) {
+                    activeTable[0] = tableList.get(position);
+                    renderActiveTab[0].run();
+                }
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        refreshTablesBtn.setOnClickListener(v -> {
+            tableList.clear();
+            tableList.addAll(dbHelper.getAllTableNames());
+            spinnerAdapter.notifyDataSetChanged();
+            if (!tableList.contains(activeTable[0]) && !tableList.isEmpty()) {
+                activeTable[0] = tableList.get(0);
+                tableSpinner.setSelection(0);
+            }
+            renderActiveTab[0].run();
+            Toast.makeText(this, "Tables refreshed: " + tableList.size() + " tables", Toast.LENGTH_SHORT).show();
+        });
+
+        // Bottom Actions
+        addBtn.setOnClickListener(v -> showAddStudentDialog(renderActiveTab[0]));
         exportBtn.setOnClickListener(v -> {
             List<Account> all = dbHelper.getAllStudents();
             JSONArray arr = new JSONArray();
@@ -3794,16 +4410,22 @@ public class MainActivity extends Activity {
         });
         closeBtn.setOnClickListener(v -> dialog.dismiss());
 
+        renderActiveTab[0].run();
+
         dialog.setContentView(root);
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
             dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             dialog.getWindow().setDimAmount(0.75f);
             int dialogWidth = Math.min(
-                    (int) (getResources().getDisplayMetrics().widthPixels * 0.94),
-                    (int) (520 * d)
+                    (int) (getResources().getDisplayMetrics().widthPixels * 0.96),
+                    (int) (540 * d)
             );
-            dialog.getWindow().setLayout(dialogWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+            int dialogHeight = Math.min(
+                    (int) (getResources().getDisplayMetrics().heightPixels * 0.90),
+                    (int) (640 * d)
+            );
+            dialog.getWindow().setLayout(dialogWidth, dialogHeight);
         }
         dialog.show();
     }
