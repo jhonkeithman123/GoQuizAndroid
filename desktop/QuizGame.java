@@ -3,6 +3,7 @@ import java.awt.event.*;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.sql.*;
 import goquiz.QuizServer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,6 +20,7 @@ import javax.sound.sampled.*;
 import javax.swing.*;
 import javax.swing.border.AbstractBorder;
 import javax.swing.plaf.basic.BasicSliderUI;
+import javax.swing.table.*;
 
 public class QuizGame extends JFrame {
 
@@ -103,6 +105,135 @@ public class QuizGame extends JFrame {
             name=n; grade=g; section=sec; gender=gen; password=pw;
         }
     }
+
+    // ==========================================
+    // SQLITE DATABASE MANAGER (Desktop)
+    // ==========================================
+    static class QuizDatabase {
+        private static final String TABLE_STUDENTS = "student_accounts";
+        private final File dbFile;
+        private boolean available = false;
+
+        QuizDatabase(File file) {
+            this.dbFile = file;
+            init();
+        }
+
+        private Connection getConnection() throws SQLException {
+            return DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
+        }
+
+        private void init() {
+            try {
+                Class.forName("org.sqlite.JDBC");
+                try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+                    stmt.execute("CREATE TABLE IF NOT EXISTS " + TABLE_STUDENTS + " ("
+                            + "name TEXT PRIMARY KEY COLLATE NOCASE, "
+                            + "grade TEXT, "
+                            + "section TEXT, "
+                            + "gender TEXT, "
+                            + "password TEXT, "
+                            + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                            + ");");
+                    available = true;
+                }
+            } catch (Throwable t) {
+                System.err.println("[SQLite] Desktop driver not loaded: " + t.getMessage());
+                available = false;
+            }
+        }
+
+        public boolean isAvailable() { return available; }
+        public File getFile() { return dbFile; }
+
+        public synchronized boolean insertStudent(StudentAccount a) {
+            if (!available || a == null || a.name == null || a.name.trim().isEmpty()) return false;
+            String sql = "INSERT INTO " + TABLE_STUDENTS + " (name, grade, section, gender, password) VALUES (?, ?, ?, ?, ?)";
+            try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, a.name.trim());
+                ps.setString(2, a.grade != null ? a.grade : "");
+                ps.setString(3, a.section != null ? a.section : "");
+                ps.setString(4, a.gender != null ? a.gender : "Male");
+                ps.setString(5, a.password != null ? a.password : "");
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) {
+                return false;
+            }
+        }
+
+        public synchronized boolean updateStudent(StudentAccount a) {
+            if (!available || a == null || a.name == null) return false;
+            String sql = "UPDATE " + TABLE_STUDENTS + " SET grade = ?, section = ?, gender = ?, password = ? WHERE name = ? COLLATE NOCASE";
+            try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, a.grade != null ? a.grade : "");
+                ps.setString(2, a.section != null ? a.section : "");
+                ps.setString(3, a.gender != null ? a.gender : "Male");
+                ps.setString(4, a.password != null ? a.password : "");
+                ps.setString(5, a.name.trim());
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) {
+                return false;
+            }
+        }
+
+        public synchronized boolean deleteStudent(String name) {
+            if (!available || name == null || name.trim().isEmpty()) return false;
+            String sql = "DELETE FROM " + TABLE_STUDENTS + " WHERE name = ? COLLATE NOCASE";
+            try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, name.trim());
+                return ps.executeUpdate() > 0;
+            } catch (SQLException e) {
+                return false;
+            }
+        }
+
+        public synchronized StudentAccount getStudent(String name) {
+            if (!available || name == null) return null;
+            String sql = "SELECT name, grade, section, gender, password FROM " + TABLE_STUDENTS + " WHERE name = ? COLLATE NOCASE";
+            try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, name.trim());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return new StudentAccount(rs.getString("name"), rs.getString("grade"), rs.getString("section"), rs.getString("gender"), rs.getString("password"));
+                    }
+                }
+            } catch (SQLException ignored) {
+            }
+            return null;
+        }
+
+        public synchronized List<StudentAccount> getAllStudents() {
+            List<StudentAccount> list = new ArrayList<>();
+            if (!available) return list;
+            String sql = "SELECT name, grade, section, gender, password FROM " + TABLE_STUDENTS + " ORDER BY name COLLATE NOCASE ASC";
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+                while (rs.next()) {
+                    list.add(new StudentAccount(rs.getString("name"), rs.getString("grade"), rs.getString("section"), rs.getString("gender"), rs.getString("password")));
+                }
+            } catch (SQLException ignored) {
+            }
+            return list;
+        }
+
+        public synchronized void migrateFromProperties(File propsFile) {
+            if (!available || propsFile == null || !propsFile.exists()) return;
+            Properties p = new Properties();
+            try (FileInputStream in = new FileInputStream(propsFile)) {
+                p.load(in);
+                for (String key : p.stringPropertyNames()) {
+                    String[] v = p.getProperty(key).split("\\|", -1);
+                    if (v.length == 5) {
+                        StudentAccount a = new StudentAccount(v[0], v[1], v[2], v[3], v[4]);
+                        if (getStudent(a.name) == null) {
+                            insertStudent(a);
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private final QuizDatabase quizDb = new QuizDatabase(resolveDesktopDataFile("goquiz.db"));
 
     // Completion for each programming language
     private final Map<String, Integer> completedLevels = new LinkedHashMap<>();
@@ -242,6 +373,16 @@ public class QuizGame extends JFrame {
         // Automatically start the leaderboard server on the host computer.
         // If another QuizServer is already running on port 5050, this simply leaves it alone.
         startEmbeddedLeaderboardServer();
+
+        // Keybindings for In-App SQLite Database Inspector (F12 or Ctrl+Shift+D)
+        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), "openDbInspector");
+        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK), "openDbInspector");
+        getRootPane().getActionMap().put("openDbInspector", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                showDatabaseInspector();
+            }
+        });
 
         showLogin();
 
@@ -5589,8 +5730,43 @@ public class QuizGame extends JFrame {
         panel.add(grid,BorderLayout.CENTER); JPanel bottom=new JPanel(); bottom.setOpaque(false); JButton back=createFantasyButton("BACK"); back.addActionListener(e->showHome()); bottom.add(back); bottom.setBorder(BorderFactory.createEmptyBorder(0,0,18,0)); panel.add(bottom,BorderLayout.SOUTH); changeScreen(panel);
     }
 
-    private void loadStudentAccounts(){ if(!accountsFile.exists())return; Properties p=new Properties(); try(FileInputStream in=new FileInputStream(accountsFile)){p.load(in); for(String key:p.stringPropertyNames()){String[] v=p.getProperty(key).split("\\|",-1); if(v.length==5)studentAccounts.put(key.toLowerCase(),new StudentAccount(v[0],v[1],v[2],v[3],v[4]));}}catch(Exception ignored){} }
-    private void saveStudentAccounts(){ Properties p=new Properties(); for(StudentAccount a:studentAccounts.values())p.setProperty(a.name.toLowerCase(),String.join("|",a.name,a.grade,a.section,a.gender,a.password)); try(FileOutputStream out=new FileOutputStream(accountsFile)){p.store(out,"Quiz Adventure Student Accounts");}catch(IOException ignored){} }
+    private void loadStudentAccounts(){
+        if(quizDb.isAvailable()){
+            quizDb.migrateFromProperties(accountsFile);
+            studentAccounts.clear();
+            for(StudentAccount a:quizDb.getAllStudents()){
+                studentAccounts.put(a.name.toLowerCase(), a);
+            }
+        }else{
+            if(!accountsFile.exists())return;
+            Properties p=new Properties();
+            try(FileInputStream in=new FileInputStream(accountsFile)){
+                p.load(in);
+                for(String key:p.stringPropertyNames()){
+                    String[] v=p.getProperty(key).split("\\|",-1);
+                    if(v.length==5)studentAccounts.put(key.toLowerCase(),new StudentAccount(v[0],v[1],v[2],v[3],v[4]));
+                }
+            }catch(Exception ignored){}
+        }
+    }
+
+    private void saveStudentAccounts(){
+        Properties p=new Properties();
+        for(StudentAccount a:studentAccounts.values()){
+            p.setProperty(a.name.toLowerCase(),String.join("|",a.name,a.grade,a.section,a.gender,a.password));
+            if(quizDb.isAvailable()){
+                if(quizDb.getStudent(a.name)!=null){
+                    quizDb.updateStudent(a);
+                }else{
+                    quizDb.insertStudent(a);
+                }
+            }
+        }
+        try(FileOutputStream out=new FileOutputStream(accountsFile)){
+            p.store(out,"Quiz Adventure Student Accounts");
+        }catch(IOException ignored){}
+    }
+
     private void applyStudentAccount(StudentAccount a){
         studentName=a.name;
         gradeLevel=a.grade;
@@ -5682,11 +5858,17 @@ public class QuizGame extends JFrame {
 
         JButton login=createFantasyButton("LOGIN");
         JButton register=createFantasyButton("REGISTER ACCOUNT");
-        login.setAlignmentX(Component.CENTER_ALIGNMENT); register.setAlignmentX(Component.CENTER_ALIGNMENT);
-        login.setPreferredSize(new Dimension(350,58)); register.setPreferredSize(new Dimension(350,52));
+        JButton dbInspector=createFantasyButton("🛠️ DB INSPECTOR");
+        login.setAlignmentX(Component.CENTER_ALIGNMENT); register.setAlignmentX(Component.CENTER_ALIGNMENT); dbInspector.setAlignmentX(Component.CENTER_ALIGNMENT);
+        login.setPreferredSize(new Dimension(350,58)); register.setPreferredSize(new Dimension(350,52)); dbInspector.setPreferredSize(new Dimension(350,46));
 
         login.addActionListener(e->{
-            StudentAccount a=studentAccounts.get(name.getText().trim().toLowerCase());
+            String nStr = name.getText().trim();
+            StudentAccount a = studentAccounts.get(nStr.toLowerCase());
+            if (a == null && quizDb.isAvailable()) {
+                a = quizDb.getStudent(nStr);
+                if (a != null) studentAccounts.put(a.name.toLowerCase(), a);
+            }
             if(a!=null&&a.password.equals(new String(pass.getPassword()))){
                 applyStudentAccount(a); showHome();
             }else{
@@ -5694,6 +5876,7 @@ public class QuizGame extends JFrame {
             }
         });
         register.addActionListener(e->showRegistration());
+        dbInspector.addActionListener(e->showDatabaseInspector());
 
         card.add(gameTitle);
         card.add(Box.createVerticalStrut(8));
@@ -5708,6 +5891,8 @@ public class QuizGame extends JFrame {
         card.add(login);
         card.add(Box.createVerticalStrut(10));
         card.add(register);
+        card.add(Box.createVerticalStrut(10));
+        card.add(dbInspector);
 
         panel.add(card);
         changeScreen(panel);
@@ -5717,8 +5902,256 @@ public class QuizGame extends JFrame {
         JPanel panel=createBackgroundPanel();panel.setLayout(new GridBagLayout());JPanel card=new FantasyPanel();card.setLayout(new BoxLayout(card,BoxLayout.Y_AXIS));card.setBorder(BorderFactory.createEmptyBorder(22,55,22,55)); JLabel title=new JLabel("REGISTER STUDENT ACCOUNT",SwingConstants.CENTER);title.setFont(pixelFont(Font.BOLD,27));title.setForeground(TEXT);title.setAlignmentX(Component.CENTER_ALIGNMENT);
         JTextField name=new JTextField(),section=new JTextField(); JComboBox<String> grade=new JComboBox<>(new String[]{"Grade 11","Grade 12"}); JComboBox<String> gender=new JComboBox<>(new String[]{"Male","Female","Prefer not to say"});JPasswordField password=new JPasswordField();JComponent[] fields={name,grade,section,gender,password};String[] labels={"Student Name","Grade Level","Section","Gender","Password"};for(JComponent f:fields){f.setMaximumSize(new Dimension(350,38));f.setAlignmentX(Component.CENTER_ALIGNMENT);}
         JButton create=createFantasyButton("CREATE ACCOUNT"),back=createFantasyButton("BACK TO LOGIN");create.setAlignmentX(Component.CENTER_ALIGNMENT);back.setAlignmentX(Component.CENTER_ALIGNMENT);
-        create.addActionListener(e->{String nm=name.getText().trim(),gr=grade.getSelectedItem().toString(),sec=section.getText().trim(),gen=gender.getSelectedItem().toString(),pw=new String(password.getPassword());if(nm.isEmpty()||sec.isEmpty()||pw.isEmpty()){JOptionPane.showMessageDialog(this,"Please complete all required fields.");return;}if(studentAccounts.containsKey(nm.toLowerCase())){JOptionPane.showMessageDialog(this,"That student name is already registered.");return;}StudentAccount a=new StudentAccount(nm,gr,sec,gen,pw);studentAccounts.put(nm.toLowerCase(),a);saveStudentAccounts();applyStudentAccount(a);JOptionPane.showMessageDialog(this,"Account created successfully!");showHome();});back.addActionListener(e->showLogin());
+        create.addActionListener(e->{
+            String nm=name.getText().trim(),gr=grade.getSelectedItem().toString(),sec=section.getText().trim(),gen=gender.getSelectedItem().toString(),pw=new String(password.getPassword());
+            if(nm.isEmpty()||sec.isEmpty()||pw.isEmpty()){JOptionPane.showMessageDialog(this,"Please complete all required fields.");return;}
+            if(studentAccounts.containsKey(nm.toLowerCase())||(quizDb.isAvailable()&&quizDb.getStudent(nm)!=null)){JOptionPane.showMessageDialog(this,"That student name is already registered.");return;}
+            StudentAccount a=new StudentAccount(nm,gr,sec,gen,pw);
+            studentAccounts.put(nm.toLowerCase(),a);
+            if(quizDb.isAvailable()) quizDb.insertStudent(a);
+            saveStudentAccounts();
+            applyStudentAccount(a);
+            JOptionPane.showMessageDialog(this,"Account created successfully!");
+            showHome();
+        });
+        back.addActionListener(e->showLogin());
         card.add(title);card.add(Box.createVerticalStrut(15));for(int i=0;i<fields.length;i++){JLabel l=new JLabel(labels[i]);l.setForeground(TEXT);l.setAlignmentX(Component.CENTER_ALIGNMENT);card.add(l);card.add(fields[i]);card.add(Box.createVerticalStrut(7));}card.add(create);card.add(Box.createVerticalStrut(8));card.add(back);panel.add(card);changeScreen(panel);
+    }
+    // ==========================================
+    // IN-APP SQLITE DATABASE INSPECTOR (Desktop)
+    // ==========================================
+    private void showDatabaseInspector() {
+        JDialog dialog = new JDialog(this, "GoQuiz SQLite Database Inspector", true);
+        dialog.setSize(860, 580);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel content = new JPanel(new BorderLayout(10, 10));
+        content.setBackground(new Color(15, 23, 42));
+        content.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+
+        // Header
+        JPanel headerPanel = new JPanel(new GridLayout(2, 1, 4, 4));
+        headerPanel.setOpaque(false);
+        JLabel title = new JLabel("🛠️ SQLite Database Inspector", SwingConstants.LEFT);
+        title.setFont(pixelFont(Font.BOLD, 20));
+        title.setForeground(GOLD_LIGHT);
+
+        String dbStatus = quizDb.isAvailable()
+                ? "Connected: " + quizDb.getFile().getAbsolutePath()
+                : "SQLite Unavailable (Using Properties Fallback)";
+        JLabel subTitle = new JLabel(dbStatus + "  |  Hotkeys: F12 / Ctrl+Shift+D");
+        subTitle.setFont(pixelFont(Font.PLAIN, 12));
+        subTitle.setForeground(new Color(148, 163, 184));
+        headerPanel.add(title);
+        headerPanel.add(subTitle);
+        content.add(headerPanel, BorderLayout.NORTH);
+
+        // Table Model
+        String[] columns = {"Name", "Grade", "Section", "Gender", "Password"};
+        DefaultTableModel model = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+
+        JTable table = new JTable(model);
+        table.setRowHeight(28);
+        table.setFont(pixelFont(Font.PLAIN, 13));
+        table.getTableHeader().setFont(pixelFont(Font.BOLD, 13));
+        table.setBackground(new Color(30, 41, 59));
+        table.setForeground(Color.WHITE);
+        table.setSelectionBackground(new Color(231, 160, 39, 180));
+        table.setSelectionForeground(Color.BLACK);
+        table.getTableHeader().setBackground(new Color(51, 65, 85));
+        table.getTableHeader().setForeground(GOLD_LIGHT);
+
+        Runnable reloadData = () -> {
+            model.setRowCount(0);
+            List<StudentAccount> list;
+            if (quizDb.isAvailable()) {
+                list = quizDb.getAllStudents();
+            } else {
+                list = new ArrayList<>(studentAccounts.values());
+            }
+            for (StudentAccount a : list) {
+                model.addRow(new Object[]{a.name, a.grade, a.section, a.gender, a.password});
+            }
+        };
+        reloadData.run();
+
+        JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.getViewport().setBackground(new Color(15, 23, 42));
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(51, 65, 85)));
+
+        // Search & Filter Toolbar
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        toolbar.setOpaque(false);
+        JLabel searchLbl = new JLabel("Search:");
+        searchLbl.setForeground(Color.WHITE);
+        searchLbl.setFont(pixelFont(Font.BOLD, 13));
+        JTextField searchField = new JTextField(15);
+        styleFantasyInput(searchField);
+        searchField.setPreferredSize(new Dimension(180, 32));
+
+        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(model);
+        table.setRowSorter(sorter);
+
+        searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            private void updateFilter() {
+                String text = searchField.getText().trim();
+                if (text.isEmpty()) {
+                    sorter.setRowFilter(null);
+                } else {
+                    sorter.setRowFilter(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(text)));
+                }
+            }
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) { updateFilter(); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { updateFilter(); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) { updateFilter(); }
+        });
+
+        JButton btnAdd = createFantasyButton("+ Add Account");
+        JButton btnExport = createFantasyButton("Export JSON");
+        btnAdd.setPreferredSize(new Dimension(140, 34));
+        btnExport.setPreferredSize(new Dimension(130, 34));
+
+        btnAdd.addActionListener(e -> {
+            JTextField nF = new JTextField();
+            JComboBox<String> gB = new JComboBox<>(new String[]{"Grade 11", "Grade 12"});
+            JTextField sF = new JTextField();
+            JComboBox<String> genB = new JComboBox<>(new String[]{"Male", "Female", "Prefer not to say"});
+            JTextField pF = new JTextField();
+            Object[] fields = {
+                "Student Name:", nF,
+                "Grade Level:", gB,
+                "Section:", sF,
+                "Gender:", genB,
+                "Password:", pF
+            };
+            int res = JOptionPane.showConfirmDialog(dialog, fields, "Add Student Account", JOptionPane.OK_CANCEL_OPTION);
+            if (res == JOptionPane.OK_OPTION) {
+                String nm = nF.getText().trim();
+                String pw = pF.getText().trim();
+                if (nm.isEmpty() || pw.isEmpty()) {
+                    JOptionPane.showMessageDialog(dialog, "Name and Password are required.", "Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                StudentAccount acc = new StudentAccount(nm, (String) gB.getSelectedItem(), sF.getText().trim(), (String) genB.getSelectedItem(), pw);
+                if (quizDb.isAvailable()) quizDb.insertStudent(acc);
+                studentAccounts.put(nm.toLowerCase(), acc);
+                saveStudentAccounts();
+                reloadData.run();
+                JOptionPane.showMessageDialog(dialog, "Account added successfully!");
+            }
+        });
+
+        btnExport.addActionListener(e -> {
+            List<StudentAccount> list = quizDb.isAvailable() ? quizDb.getAllStudents() : new ArrayList<>(studentAccounts.values());
+            StringBuilder sb = new StringBuilder("[\n");
+            for (int i = 0; i < list.size(); i++) {
+                StudentAccount a = list.get(i);
+                sb.append("  {\n")
+                  .append("    \"name\": \"").append(a.name.replace("\"", "\\\"")).append("\",\n")
+                  .append("    \"grade\": \"").append(a.grade.replace("\"", "\\\"")).append("\",\n")
+                  .append("    \"section\": \"").append(a.section.replace("\"", "\\\"")).append("\",\n")
+                  .append("    \"gender\": \"").append(a.gender.replace("\"", "\\\"")).append("\",\n")
+                  .append("    \"password\": \"").append(a.password.replace("\"", "\\\"")).append("\"\n")
+                  .append("  }").append(i < list.size() - 1 ? ",\n" : "\n");
+            }
+            sb.append("]");
+            java.awt.datatransfer.StringSelection sel = new java.awt.datatransfer.StringSelection(sb.toString());
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(sel, null);
+            JOptionPane.showMessageDialog(dialog, "Copied " + list.size() + " accounts to clipboard as JSON!", "Export Complete", JOptionPane.INFORMATION_MESSAGE);
+        });
+
+        toolbar.add(searchLbl);
+        toolbar.add(searchField);
+        toolbar.add(btnAdd);
+        toolbar.add(btnExport);
+
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 8));
+        centerPanel.setOpaque(false);
+        centerPanel.add(toolbar, BorderLayout.NORTH);
+        centerPanel.add(scrollPane, BorderLayout.CENTER);
+        content.add(centerPanel, BorderLayout.CENTER);
+
+        // Bottom Actions (Edit, Delete, Close)
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 4));
+        bottomPanel.setOpaque(false);
+
+        JButton btnEdit = createFantasyButton("✏️ Edit Selected");
+        JButton btnDelete = createFantasyButton("🗑️ Delete Selected");
+        JButton btnClose = createFantasyButton("Close");
+        btnEdit.setPreferredSize(new Dimension(140, 36));
+        btnDelete.setPreferredSize(new Dimension(150, 36));
+        btnClose.setPreferredSize(new Dimension(100, 36));
+
+        btnEdit.addActionListener(e -> {
+            int selectedRow = table.getSelectedRow();
+            if (selectedRow < 0) {
+                JOptionPane.showMessageDialog(dialog, "Please select an account row to edit.", "Selection Required", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            int modelRow = table.convertRowIndexToModel(selectedRow);
+            String nameVal = (String) model.getValueAt(modelRow, 0);
+            String gradeVal = (String) model.getValueAt(modelRow, 1);
+            String sectionVal = (String) model.getValueAt(modelRow, 2);
+            String genderVal = (String) model.getValueAt(modelRow, 3);
+            String passVal = (String) model.getValueAt(modelRow, 4);
+
+            JComboBox<String> gB = new JComboBox<>(new String[]{"Grade 11", "Grade 12"});
+            gB.setSelectedItem(gradeVal);
+            JTextField sF = new JTextField(sectionVal);
+            JComboBox<String> genB = new JComboBox<>(new String[]{"Male", "Female", "Prefer not to say"});
+            genB.setSelectedItem(genderVal);
+            JTextField pF = new JTextField(passVal);
+
+            Object[] fields = {
+                "Student Name (Read Only):", new JLabel(nameVal),
+                "Grade Level:", gB,
+                "Section:", sF,
+                "Gender:", genB,
+                "Password:", pF
+            };
+            int res = JOptionPane.showConfirmDialog(dialog, fields, "Edit Student: " + nameVal, JOptionPane.OK_CANCEL_OPTION);
+            if (res == JOptionPane.OK_OPTION) {
+                StudentAccount acc = new StudentAccount(nameVal, (String) gB.getSelectedItem(), sF.getText().trim(), (String) genB.getSelectedItem(), pF.getText().trim());
+                if (quizDb.isAvailable()) quizDb.updateStudent(acc);
+                studentAccounts.put(nameVal.toLowerCase(), acc);
+                saveStudentAccounts();
+                reloadData.run();
+                JOptionPane.showMessageDialog(dialog, "Account updated successfully!");
+            }
+        });
+
+        btnDelete.addActionListener(e -> {
+            int selectedRow = table.getSelectedRow();
+            if (selectedRow < 0) {
+                JOptionPane.showMessageDialog(dialog, "Please select an account row to delete.", "Selection Required", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            int modelRow = table.convertRowIndexToModel(selectedRow);
+            String nameVal = (String) model.getValueAt(modelRow, 0);
+            int confirm = JOptionPane.showConfirmDialog(dialog, "Are you sure you want to delete student account '" + nameVal + "'?", "Confirm Delete", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (confirm == JOptionPane.YES_OPTION) {
+                if (quizDb.isAvailable()) quizDb.deleteStudent(nameVal);
+                studentAccounts.remove(nameVal.toLowerCase());
+                saveStudentAccounts();
+                reloadData.run();
+                JOptionPane.showMessageDialog(dialog, "Account deleted.");
+            }
+        });
+
+        btnClose.addActionListener(e -> dialog.dispose());
+
+        bottomPanel.add(btnEdit);
+        bottomPanel.add(btnDelete);
+        bottomPanel.add(btnClose);
+        content.add(bottomPanel, BorderLayout.SOUTH);
+
+        dialog.setContentPane(content);
+        dialog.setVisible(true);
     }
 
     // =========================
@@ -7211,6 +7644,15 @@ public class QuizGame extends JFrame {
             for (BackgroundPanel p : activeDesktopPanels) p.repaint();
         });
 
+        JButton dbInspector =
+                createFantasyButton(
+                        "🛠️ SQLITE DATABASE INSPECTOR"
+                );
+
+        dbInspector.addActionListener(
+                e -> showDatabaseInspector()
+        );
+
         JButton reset =
                 createFantasyButton(
                         "RESET ALL BADGES"
@@ -7340,6 +7782,14 @@ public class QuizGame extends JFrame {
         );
 
         card.add(cameraButton);
+
+        card.add(
+                Box.createVerticalStrut(
+                        14
+                )
+        );
+
+        card.add(dbInspector);
 
         card.add(
                 Box.createVerticalStrut(
