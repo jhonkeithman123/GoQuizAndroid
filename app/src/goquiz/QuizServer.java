@@ -4,7 +4,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
 /**
  * Quiz Adventure shared server for Android & Desktop:
@@ -33,6 +33,9 @@ public class QuizServer {
         public volatile String guestGender = "";
         public volatile boolean active = false;
         public volatile boolean finished = false;
+        public volatile boolean hostReady = false;
+        public volatile boolean guestReady = false;
+        public volatile ScheduledFuture<?> timeoutTask = null;
 
         public DuelRoom(String code, String hostName, String hostGender, String language, String difficulty, ClientHandler hostHandler) {
             this.code = code;
@@ -44,6 +47,12 @@ public class QuizServer {
             this.hostHandler = hostHandler;
         }
     }
+
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "QuizServerReadyWatchdog");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final Map<String, DuelRoom> rooms = new ConcurrentHashMap<>();
     private final Set<ClientHandler> activeClients = Collections.synchronizedSet(new HashSet<>());
@@ -312,10 +321,20 @@ public class QuizServer {
                 currentRoom = null;
                 if (!room.finished) {
                     room.finished = true;
-                    if (this == room.hostHandler && room.guestHandler != null) {
-                        room.guestHandler.send("OPPONENT_LEFT|" + room.hostName);
-                    } else if (this == room.guestHandler && room.hostHandler != null) {
-                        room.hostHandler.send("OPPONENT_LEFT|" + room.guestName);
+                    if (room.timeoutTask != null) room.timeoutTask.cancel(true);
+                    if (!room.active) {
+                        String msg = "MATCH_CANCELLED|" + room.code + "|Opponent disconnected before accepting match.";
+                        if (this == room.hostHandler && room.guestHandler != null) {
+                            room.guestHandler.send(msg);
+                        } else if (this == room.guestHandler && room.hostHandler != null) {
+                            room.hostHandler.send(msg);
+                        }
+                    } else {
+                        if (this == room.hostHandler && room.guestHandler != null) {
+                            room.guestHandler.send("OPPONENT_LEFT|" + room.hostName);
+                        } else if (this == room.guestHandler && room.hostHandler != null) {
+                            room.hostHandler.send("OPPONENT_LEFT|" + room.guestName);
+                        }
                     }
                 }
                 rooms.remove(room.code);
@@ -439,18 +458,74 @@ public class QuizServer {
                     room.guestHandler = this;
                     room.guestName = guestName;
                     room.guestGender = guestGender;
-                    room.active = true;
+                    room.hostReady = false;
+                    room.guestReady = false;
                     this.currentRoom = room;
 
-                    String matchStartMsg = "MATCH_START|" + room.code + "|" +
+                    String checkMsg = "MATCH_READY_CHECK|" + room.code + "|" +
                             room.hostName + "|" + room.hostGender + "|" +
                             room.guestName + "|" + room.guestGender + "|" +
                             room.language + "|" + room.difficulty + "|" +
-                            room.seed +
-                            (room.questionsPayload.isEmpty() ? "" : ("|" + room.questionsPayload));
+                            room.seed + "|" +
+                            (room.questionsPayload.isEmpty() ? "NONE" : room.questionsPayload) + "|20";
 
-                    room.hostHandler.send(matchStartMsg);
-                    room.guestHandler.send(matchStartMsg);
+                    if (room.hostHandler != null) room.hostHandler.send(checkMsg);
+                    room.guestHandler.send(checkMsg);
+
+                    if (room.timeoutTask != null) room.timeoutTask.cancel(true);
+                    room.timeoutTask = scheduler.schedule(() -> {
+                        synchronized (room) {
+                            if (!room.active && !room.finished) {
+                                room.finished = true;
+                                String cancelMsg = "MATCH_CANCELLED|" + room.code + "|Match cancelled: Player failed to ready up within 20 seconds.";
+                                if (room.hostHandler != null) room.hostHandler.send(cancelMsg);
+                                if (room.guestHandler != null) room.guestHandler.send(cancelMsg);
+                                rooms.remove(room.code);
+                            }
+                        }
+                    }, 20500, TimeUnit.MILLISECONDS);
+                }
+
+                case "PLAYER_READY" -> {
+                    if (currentRoom != null && !currentRoom.finished && !currentRoom.active) {
+                        boolean isHost = (this == currentRoom.hostHandler);
+                        if (isHost) {
+                            currentRoom.hostReady = true;
+                            if (currentRoom.guestHandler != null) {
+                                currentRoom.guestHandler.send("OPPONENT_READY|" + currentRoom.code);
+                            }
+                        } else {
+                            currentRoom.guestReady = true;
+                            if (currentRoom.hostHandler != null) {
+                                currentRoom.hostHandler.send("OPPONENT_READY|" + currentRoom.code);
+                            }
+                        }
+
+                        if (currentRoom.hostReady && currentRoom.guestReady) {
+                            currentRoom.active = true;
+                            if (currentRoom.timeoutTask != null) currentRoom.timeoutTask.cancel(true);
+                            String matchStartMsg = "MATCH_START|" + currentRoom.code + "|" +
+                                    currentRoom.hostName + "|" + currentRoom.hostGender + "|" +
+                                    currentRoom.guestName + "|" + currentRoom.guestGender + "|" +
+                                    currentRoom.language + "|" + currentRoom.difficulty + "|" +
+                                    currentRoom.seed +
+                                    (currentRoom.questionsPayload.isEmpty() ? "" : ("|" + currentRoom.questionsPayload));
+
+                            if (currentRoom.hostHandler != null) currentRoom.hostHandler.send(matchStartMsg);
+                            if (currentRoom.guestHandler != null) currentRoom.guestHandler.send(matchStartMsg);
+                        }
+                    }
+                }
+
+                case "DECLINE_MATCH" -> {
+                    if (currentRoom != null && !currentRoom.finished && !currentRoom.active) {
+                        currentRoom.finished = true;
+                        if (currentRoom.timeoutTask != null) currentRoom.timeoutTask.cancel(true);
+                        String cancelMsg = "MATCH_CANCELLED|" + currentRoom.code + "|Match declined by " + (playerName.isEmpty() ? "opponent" : playerName) + ".";
+                        ClientHandler opponent = (this == currentRoom.hostHandler) ? currentRoom.guestHandler : currentRoom.hostHandler;
+                        if (opponent != null) opponent.send(cancelMsg);
+                        rooms.remove(currentRoom.code);
+                    }
                 }
 
                 case "DUEL_ACTION" -> {

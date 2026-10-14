@@ -3833,6 +3833,210 @@ public class QuizGame extends JFrame {
     // LIVE ONLINE PLAY (1v1 CROSS-PLATFORM DUEL)
     // =========================================================================
     private DuelClient activeDuelClient = null;
+    private JDialog activeReadyCheckDialog = null;
+    private javax.swing.Timer activeReadyCountdownTimer = null;
+
+    private void dismissReadyCheckDialog() {
+        if (activeReadyCountdownTimer != null) {
+            activeReadyCountdownTimer.stop();
+            activeReadyCountdownTimer = null;
+        }
+        if (activeReadyCheckDialog != null) {
+            try {
+                activeReadyCheckDialog.dispose();
+            } catch (Exception ignored) {}
+            activeReadyCheckDialog = null;
+        }
+    }
+
+    private void showMatchReadyCheckDialog(DuelClient client, String code, String oppName, String oppGen, String lang, String diff, int timeoutSec) {
+        dismissReadyCheckDialog();
+
+        JDialog dialog = new JDialog(this, "Accept Duel", false);
+        dialog.setUndecorated(true);
+        dialog.setBackground(new Color(0, 0, 0, 0));
+        activeReadyCheckDialog = dialog;
+
+        FantasyPanel root = new FantasyPanel(20, 26, 18, new Color(15, 22, 34, 250), new Color(231, 160, 39, 230));
+        root.setLayout(new BoxLayout(root, BoxLayout.Y_AXIS));
+        root.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(231, 160, 39, 200), 2, true),
+                BorderFactory.createEmptyBorder(18, 26, 18, 26)
+        ));
+
+        // 1. Header Title
+        JLabel title = new JLabel("⚔️ MATCH FOUND! ACCEPT DUEL ⚔️", SwingConstants.CENTER);
+        title.setFont(pixelFont(Font.BOLD, 18));
+        title.setForeground(GOLD_LIGHT);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        root.add(title);
+        root.add(Box.createVerticalStrut(6));
+
+        // 2. Countdown Timer Banner
+        final int[] secondsLeft = new int[]{timeoutSec > 0 ? timeoutSec : 20};
+        JLabel timerLbl = new JLabel("⏱️ ACCEPT WITHIN: " + secondsLeft[0] + "s", SwingConstants.CENTER);
+        timerLbl.setFont(pixelFont(Font.BOLD, 16));
+        timerLbl.setForeground(new Color(255, 200, 80));
+        timerLbl.setAlignmentX(Component.CENTER_ALIGNMENT);
+        root.add(timerLbl);
+        root.add(Box.createVerticalStrut(10));
+
+        // 3. Match Details Badge
+        JPanel badge = new FantasyPanel(6, 14, 10, new Color(24, 34, 52, 220), new Color(90, 150, 220, 160));
+        badge.setLayout(new FlowLayout(FlowLayout.CENTER, 8, 2));
+        JLabel badgeLbl = new JLabel("📜 " + lang.toUpperCase() + " (" + diff.toUpperCase() + ")  •  ROOM #" + code);
+        badgeLbl.setFont(pixelFont(Font.BOLD, 12));
+        badgeLbl.setForeground(new Color(130, 205, 255));
+        badge.add(badgeLbl);
+        badge.setAlignmentX(Component.CENTER_ALIGNMENT);
+        root.add(badge);
+        root.add(Box.createVerticalStrut(14));
+
+        // 4. Versus Podiums Row
+        JPanel vsPanel = new JPanel(new GridLayout(1, 3, 10, 0));
+        vsPanel.setOpaque(false);
+        vsPanel.setMaximumSize(new Dimension(540, 115));
+
+        // Left Podium (You)
+        FantasyPanel myPodium = new FantasyPanel(10, 12, 12, new Color(20, 28, 42, 230), new Color(231, 160, 39, 120));
+        myPodium.setLayout(new BoxLayout(myPodium, BoxLayout.Y_AXIS));
+        JLabel myNameLbl = new JLabel(client.myName, SwingConstants.CENTER);
+        myNameLbl.setFont(pixelFont(Font.BOLD, 13));
+        myNameLbl.setForeground(TEXT);
+        myNameLbl.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        ImageIcon myIcon = getScaledAvatarIcon(client.myGender, 42, 42);
+        JLabel myAvatar = new JLabel(myIcon != null ? myIcon : new ImageIcon());
+        myAvatar.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel myReadyStatus = new JLabel("⏳ NOT READY", SwingConstants.CENTER);
+        myReadyStatus.setFont(pixelFont(Font.BOLD, 11));
+        myReadyStatus.setForeground(new Color(255, 170, 70));
+        myReadyStatus.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        myPodium.add(myAvatar);
+        myPodium.add(Box.createVerticalStrut(4));
+        myPodium.add(myNameLbl);
+        myPodium.add(Box.createVerticalStrut(4));
+        myPodium.add(myReadyStatus);
+        vsPanel.add(myPodium);
+
+        // Center VS
+        JPanel centerVs = new JPanel();
+        centerVs.setOpaque(false);
+        centerVs.setLayout(new BoxLayout(centerVs, BoxLayout.Y_AXIS));
+        JLabel vsLbl = new JLabel("⚡ VS ⚡", SwingConstants.CENTER);
+        vsLbl.setFont(pixelFont(Font.BOLD, 18));
+        vsLbl.setForeground(GOLD_LIGHT);
+        vsLbl.setAlignmentX(Component.CENTER_ALIGNMENT);
+        centerVs.add(Box.createVerticalGlue());
+        centerVs.add(vsLbl);
+        centerVs.add(Box.createVerticalGlue());
+        vsPanel.add(centerVs);
+
+        // Right Podium (Opponent)
+        FantasyPanel oppPodium = new FantasyPanel(10, 12, 12, new Color(20, 28, 42, 230), new Color(231, 160, 39, 120));
+        oppPodium.setLayout(new BoxLayout(oppPodium, BoxLayout.Y_AXIS));
+        JLabel oppNameLbl = new JLabel(oppName, SwingConstants.CENTER);
+        oppNameLbl.setFont(pixelFont(Font.BOLD, 13));
+        oppNameLbl.setForeground(TEXT);
+        oppNameLbl.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        ImageIcon oppIcon = getScaledAvatarIcon(oppGen, 42, 42);
+        JLabel oppAvatar = new JLabel(oppIcon != null ? oppIcon : new ImageIcon());
+        oppAvatar.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel oppReadyStatus = new JLabel("⏳ WAITING...", SwingConstants.CENTER);
+        oppReadyStatus.setFont(pixelFont(Font.BOLD, 11));
+        oppReadyStatus.setForeground(new Color(255, 170, 70));
+        oppReadyStatus.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        oppPodium.add(oppAvatar);
+        oppPodium.add(Box.createVerticalStrut(4));
+        oppPodium.add(oppNameLbl);
+        oppPodium.add(Box.createVerticalStrut(4));
+        oppPodium.add(oppReadyStatus);
+        vsPanel.add(oppPodium);
+
+        vsPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        root.add(vsPanel);
+        root.add(Box.createVerticalStrut(16));
+
+        // 5. Action Buttons Row
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 14, 0));
+        btnRow.setOpaque(false);
+
+        JButton readyBtn = createFantasyButton("⚔️ I AM READY!");
+        if (readyBtn instanceof FantasyButton) {
+            ((FantasyButton) readyBtn).setFantasyStyle(new Color(28, 75, 45), new Color(90, 220, 120), Color.WHITE);
+        }
+        readyBtn.setPreferredSize(new Dimension(210, 40));
+
+        JButton declineBtn = createFantasyButton("✕ DECLINE");
+        if (declineBtn instanceof FantasyButton) {
+            ((FantasyButton) declineBtn).setFantasyStyle(new Color(75, 25, 25), new Color(220, 90, 90), Color.WHITE);
+        }
+        declineBtn.setPreferredSize(new Dimension(140, 40));
+
+        btnRow.add(readyBtn);
+        btnRow.add(declineBtn);
+        btnRow.setAlignmentX(Component.CENTER_ALIGNMENT);
+        root.add(btnRow);
+
+        // Click Handlers
+        readyBtn.addActionListener(e -> {
+            readyBtn.setEnabled(false);
+            readyBtn.setText("✓ YOU ARE READY!");
+            myReadyStatus.setText("✓ READY!");
+            myReadyStatus.setForeground(new Color(90, 220, 120));
+            client.send("PLAYER_READY|" + code);
+            if ("✓ READY!".equals(oppReadyStatus.getText())) {
+                timerLbl.setText("★ BOTH READY! STARTING DUEL...");
+                timerLbl.setForeground(new Color(90, 220, 120));
+            }
+        });
+
+        declineBtn.addActionListener(e -> {
+            dismissReadyCheckDialog();
+            client.send("DECLINE_MATCH|" + code);
+            client.close();
+            if (activeDuelClient == client) activeDuelClient = null;
+            JOptionPane.showMessageDialog(this, "You declined the duel match.", "Match Declined", JOptionPane.INFORMATION_MESSAGE);
+        });
+
+        // 20s Countdown Timer
+        activeReadyCountdownTimer = new javax.swing.Timer(1000, ev -> {
+            secondsLeft[0]--;
+            if (secondsLeft[0] > 0) {
+                timerLbl.setText("⏱️ ACCEPT WITHIN: " + secondsLeft[0] + "s");
+                if (secondsLeft[0] <= 5) {
+                    timerLbl.setForeground(new Color(255, 80, 80));
+                }
+            } else {
+                dismissReadyCheckDialog();
+                client.send("DECLINE_MATCH|" + code);
+                client.close();
+                if (activeDuelClient == client) activeDuelClient = null;
+                JOptionPane.showMessageDialog(this, "Match cancelled: 20 seconds expired before both players were ready.", "Match Cancelled", JOptionPane.WARNING_MESSAGE);
+            }
+        });
+        activeReadyCountdownTimer.start();
+
+        // Hook for opponent ready
+        client.readyOpponentStatusHook = () -> {
+            oppReadyStatus.setText("✓ READY!");
+            oppReadyStatus.setForeground(new Color(90, 220, 120));
+            if ("✓ YOU ARE READY!".equals(readyBtn.getText())) {
+                timerLbl.setText("★ BOTH READY! STARTING DUEL...");
+                timerLbl.setForeground(new Color(90, 220, 120));
+            }
+        };
+
+        dialog.setContentPane(root);
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
 
     private ImageIcon getScaledAvatarIcon(String genderFolder, int w, int h) {
         String folder = ("Girl".equalsIgnoreCase(genderFolder) || "Female".equalsIgnoreCase(genderFolder)) ? "Girl" : "Boy";
@@ -3971,6 +4175,7 @@ public class QuizGame extends JFrame {
         JPanel waitingRoomCard;
         JLabel waitingCodeLabel;
         JPanel roomsContainer;
+        Runnable readyOpponentStatusHook = null;
 
         boolean isCloud = false;
         String cloudBaseUrl = "";
@@ -4228,7 +4433,57 @@ public class QuizGame extends JFrame {
                         }
                     }
 
+                    case "MATCH_READY_CHECK" -> {
+                        // MATCH_READY_CHECK|code|hostName|hostGender|guestName|guestGender|language|difficulty|seed|payload|timeoutSec
+                        if (p.length >= 9) {
+                            this.code = p[1];
+                            String hName = p[2];
+                            String hGen = p[3];
+                            String gName = p[4];
+                            String gGen = p[5];
+                            this.duelLang = p[6];
+                            this.duelDiff = p[7];
+                            try { this.duelSeed = Long.parseLong(p[8]); } catch (Exception ignored) {}
+
+                            boolean amHost = isCloud ? "host".equalsIgnoreCase(cloudRole) : myName.equalsIgnoreCase(hName);
+                            this.myGender = amHost ? hGen : gGen;
+                            this.opponentName = amHost ? gName : hName;
+                            this.opponentGender = amHost ? gGen : hGen;
+
+                            String qPayload = p.length >= 10 ? p[9] : "";
+                            if (!qPayload.isEmpty() && !"NONE".equalsIgnoreCase(qPayload)) {
+                                this.duelQuestions = deserializeDuelQuestions(qPayload);
+                            }
+                            if (this.duelQuestions.isEmpty()) {
+                                this.duelQuestions = loadDeterministicDuelQuestions(this.duelLang, this.duelDiff, this.duelSeed);
+                            }
+
+                            int timeoutSec = 20;
+                            if (p.length >= 11) {
+                                try { timeoutSec = Integer.parseInt(p[10]); } catch (Exception ignored) {}
+                            }
+
+                            if (waitingRoomCard != null) waitingRoomCard.setVisible(false);
+                            showMatchReadyCheckDialog(this, this.code, this.opponentName, this.opponentGender, this.duelLang, this.duelDiff, timeoutSec);
+                        }
+                    }
+
+                    case "OPPONENT_READY" -> {
+                        if (readyOpponentStatusHook != null) {
+                            readyOpponentStatusHook.run();
+                        }
+                    }
+
+                    case "MATCH_CANCELLED" -> {
+                        dismissReadyCheckDialog();
+                        String reason = p.length >= 3 ? p[2] : "Match was cancelled or expired.";
+                        close();
+                        if (activeDuelClient == this) activeDuelClient = null;
+                        JOptionPane.showMessageDialog(QuizGame.this, reason, "Duel Cancelled", JOptionPane.WARNING_MESSAGE);
+                    }
+
                     case "MATCH_START" -> {
+                        dismissReadyCheckDialog();
                         // MATCH_START|code|hostName|hostGender|guestName|guestGender|language|difficulty|seed|[payload]
                         if (p.length >= 9) {
                             this.code = p[1];
@@ -5515,7 +5770,7 @@ public class QuizGame extends JFrame {
                         while ((line = reader.readLine()) != null) sb.append(line);
                         reader.close();
                         String respJson = sb.toString();
-                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"matchStartMsg\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"").matcher(respJson);
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"(?:matchStartMsg|readyCheckMsg)\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"").matcher(respJson);
                         String matchStartMsg = null;
                         if (m.find()) {
                             matchStartMsg = m.group(1).replace("\\\"", "\"").replace("\\\\", "\\");

@@ -78,9 +78,12 @@ export interface IDuelRoom {
   hostEvents?: string[];
   guestEvents?: string[];
   lastHostPing?: number;
-  lastGuestPing?: number;
   hostClientId?: string;
   guestClientId?: string;
+  state?: 'waiting' | 'ready_check' | 'active' | 'finished';
+  hostReady?: boolean;
+  guestReady?: boolean;
+  readyCheckExpiresAt?: number;
   pushEvent?: (role: 'host' | 'guest', event: string) => void;
 }
 

@@ -635,16 +635,54 @@ class ClientSession implements IClientSession {
         room.guestSession = this;
         room.guestName = guestName;
         room.guestGender = guestGender;
-        room.active = true;
+        room.state = 'ready_check';
+        room.hostReady = false;
+        room.guestReady = false;
+        room.readyCheckExpiresAt = Date.now() + 20000;
         this.currentRoom = room;
 
         console.log(
-          `[Duel Start] Room #${room.code}: ${room.hostName} VS ${room.guestName}`,
+          `[Duel Ready Check] Room #${room.code}: ${room.hostName} VS ${room.guestName} (20s timeout)`,
         );
 
-        const matchStartMsg = `MATCH_START|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}${room.questionsPayload ? `|${room.questionsPayload}` : ""}`;
-        if (room.hostSession) room.hostSession.send(matchStartMsg);
-        if (room.guestSession) room.guestSession.send(matchStartMsg);
+        const checkMsg = `MATCH_READY_CHECK|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}|${room.questionsPayload || 'NONE'}|20`;
+        if (room.hostSession) room.hostSession.send(checkMsg);
+        if (room.guestSession) room.guestSession.send(checkMsg);
+        break;
+      }
+
+      case "PLAYER_READY": {
+        if (this.currentRoom && !this.currentRoom.finished && !this.currentRoom.active) {
+          const room = this.currentRoom;
+          if (this === room.hostSession) {
+            room.hostReady = true;
+            if (room.guestSession) room.guestSession.send(`OPPONENT_READY|${room.code}`);
+          } else {
+            room.guestReady = true;
+            if (room.hostSession) room.hostSession.send(`OPPONENT_READY|${room.code}`);
+          }
+
+          if (room.hostReady && room.guestReady) {
+            room.active = true;
+            room.state = 'active';
+            const matchStartMsg = `MATCH_START|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}${room.questionsPayload ? `|${room.questionsPayload}` : ""}`;
+            if (room.hostSession) room.hostSession.send(matchStartMsg);
+            if (room.guestSession) room.guestSession.send(matchStartMsg);
+          }
+        }
+        break;
+      }
+
+      case "DECLINE_MATCH": {
+        if (this.currentRoom && !this.currentRoom.finished && !this.currentRoom.active) {
+          const room = this.currentRoom;
+          room.finished = true;
+          room.state = 'finished';
+          const cancelMsg = `MATCH_CANCELLED|${room.code}|Match declined by ${this.playerName || 'opponent'}.`;
+          const opponent = (this === room.hostSession) ? room.guestSession : room.hostSession;
+          if (opponent) opponent.send(cancelMsg);
+          rooms.delete(room.code);
+        }
         break;
       }
 
@@ -728,17 +766,35 @@ class ClientSession implements IClientSession {
   }
 }
 
-// Periodic cleanup of stale inactive rooms (older than 20 minutes)
+// Periodic cleanup of stale rooms and 20s ready check watchdog
 setInterval(() => {
   const now = Date.now();
   for (const [code, room] of rooms.entries()) {
+    // 20-second Ready Check timeout
+    if (room.state === 'ready_check' && !room.active && !room.finished) {
+      if (room.readyCheckExpiresAt && now > room.readyCheckExpiresAt) {
+        room.finished = true;
+        room.state = 'finished';
+        const cancelMsg = `MATCH_CANCELLED|${room.code}|Match cancelled: One or more players failed to ready up within 20 seconds.`;
+        if (room.hostSession) room.hostSession.send(cancelMsg);
+        if (room.guestSession) room.guestSession.send(cancelMsg);
+        if (room.pushEvent) {
+          room.pushEvent('host', cancelMsg);
+          room.pushEvent('guest', cancelMsg);
+        }
+        console.log(`[Duel Watchdog] Room #${code} ready check expired. Room closed.`);
+        rooms.delete(code);
+        continue;
+      }
+    }
+
     if (now - room.createdAt > 20 * 60 * 1000) {
       if (!room.active || room.finished) {
         rooms.delete(code);
       }
     }
   }
-}, 60000);
+}, 1000);
 
 // ==========================================
 // EXPRESS APP & REST API
@@ -974,15 +1030,18 @@ app.post("/api/room/join", (req: Request, res: Response) => {
   room.guestName = cleanGuest;
   room.guestGender = cleanGender;
   room.guestClientId = String(guestClientId || "");
-  room.active = true;
+  room.state = 'ready_check';
+  room.hostReady = false;
+  room.guestReady = false;
+  room.readyCheckExpiresAt = Date.now() + 20000;
 
-  const matchStartMsg = `MATCH_START|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}${room.questionsPayload ? `|${room.questionsPayload}` : ""}`;
+  const readyCheckMsg = `MATCH_READY_CHECK|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}|${room.questionsPayload || 'NONE'}|20`;
 
   // Notify Host via poll
-  room.pushEvent("host", matchStartMsg);
+  room.pushEvent("host", readyCheckMsg);
 
   console.log(
-    `[Duel Start REST] Room #${room.code}: ${room.hostName} VS ${room.guestName}`,
+    `[Duel Ready Check REST] Room #${room.code}: ${room.hostName} VS ${room.guestName} (20s timeout)`,
   );
   res.json({
     success: true,
@@ -995,7 +1054,8 @@ app.post("/api/room/join", (req: Request, res: Response) => {
     difficulty: room.difficulty,
     seed: room.seed,
     questionsPayload: room.questionsPayload,
-    matchStartMsg,
+    readyCheckMsg,
+    timeoutSeconds: 20
   });
 });
 
@@ -1014,6 +1074,37 @@ app.post("/api/room/:code/action", (req: Request, res: Response) => {
   }
 
   const targetRole = role === "host" ? "guest" : "host";
+
+  if (typeof message === "string" && message.startsWith("PLAYER_READY")) {
+    if (role === "host") {
+      room.hostReady = true;
+      room.pushEvent("guest", `OPPONENT_READY|${room.code}`);
+    } else {
+      room.guestReady = true;
+      room.pushEvent("host", `OPPONENT_READY|${room.code}`);
+    }
+
+    if (room.hostReady && room.guestReady) {
+      room.active = true;
+      room.state = "active";
+      const matchStartMsg = `MATCH_START|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}${room.questionsPayload ? `|${room.questionsPayload}` : ""}`;
+      room.pushEvent("host", matchStartMsg);
+      room.pushEvent("guest", matchStartMsg);
+      console.log(`[Duel Start REST] Room #${room.code}: Both players READY! Match started.`);
+    }
+    res.json({ success: true, hostReady: room.hostReady, guestReady: room.guestReady });
+    return;
+  }
+
+  if (typeof message === "string" && message.startsWith("DECLINE_MATCH")) {
+    room.finished = true;
+    room.state = "finished";
+    const cancelMsg = `MATCH_CANCELLED|${room.code}|Match declined by ${role === "host" ? room.hostName : room.guestName}.`;
+    room.pushEvent(targetRole, cancelMsg);
+    res.json({ success: true, cancelled: true });
+    return;
+  }
+
   room.pushEvent(targetRole, message);
 
   // Track match score if updating
@@ -1088,7 +1179,11 @@ app.post("/api/room/:code/leave", (req: Request, res: Response) => {
   if (room && !room.finished) {
     room.finished = true;
     const targetRole = role === "host" ? "guest" : "host";
-    room.pushEvent(targetRole, `OPPONENT_LEFT|${clean(name || "Opponent")}`);
+    if (room.state === 'ready_check' && !room.active) {
+      room.pushEvent(targetRole, `MATCH_CANCELLED|${room.code}|Opponent left the room before accepting match.`);
+    } else {
+      room.pushEvent(targetRole, `OPPONENT_LEFT|${clean(name || "Opponent")}`);
+    }
   }
   res.json({ success: true });
 });

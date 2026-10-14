@@ -78,7 +78,7 @@ async function runLocalServerTests() {
     throw new Error(`Self-join was not blocked! HTTP ${selfJoinRes.status}`);
   }
 
-  console.log('\n[TEST 5C] Joining Room from Second Player & Testing Event Relay...');
+  console.log('\n[TEST 5C] Joining Room from Second Player & Verifying 20s Ready Check...');
   t0 = performance.now();
   res = await fetch(`${HTTP_URL}/api/room/join`, {
     method: 'POST',
@@ -86,13 +86,49 @@ async function runLocalServerTests() {
     body: JSON.stringify({ code: roomRes.code, guestClientId: 'guest_instance_xyz', guestName: 'GuestChallenger', guestGender: 'Girl' })
   });
   const joinData = await res.json();
-  console.log(`  ✓ POST /api/room/join -> ${joinData.matchStartMsg.slice(0, 45)}... (${formatMs(t0)})`);
+  console.log(`  ✓ POST /api/room/join -> Ready check prompt: ${joinData.readyCheckMsg.slice(0, 45)}... (${formatMs(t0)})`);
+  if (!joinData.readyCheckMsg.startsWith('MATCH_READY_CHECK')) {
+    throw new Error('Expected MATCH_READY_CHECK from join endpoint!');
+  }
 
   t0 = performance.now();
   res = await fetch(`${HTTP_URL}/api/room/${roomRes.code}/poll?role=host`);
   const hostPoll = await res.json();
-  console.log(`  ✓ GET /poll?role=host -> Received ${hostPoll.events.length} event(s): ${hostPoll.events[0]?.slice(0, 40)}... (${formatMs(t0)})`);
+  console.log(`  ✓ Host Poll -> Received Ready Check event: ${hostPoll.events[0]?.slice(0, 40)}... (${formatMs(t0)})`);
 
+  // Host clicks "READY"
+  t0 = performance.now();
+  res = await fetch(`${HTTP_URL}/api/room/${roomRes.code}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'host', message: 'PLAYER_READY|' + roomRes.code })
+  });
+  const hostReadyRes = await res.json();
+  console.log(`  ✓ Host sends PLAYER_READY -> hostReady: ${hostReadyRes.hostReady} (${formatMs(t0)})`);
+
+  // Guest polls and receives OPPONENT_READY
+  t0 = performance.now();
+  res = await fetch(`${HTTP_URL}/api/room/${roomRes.code}/poll?role=guest`);
+  const guestPollOppReady = await res.json();
+  console.log(`  ✓ Guest Poll -> Received ${guestPollOppReady.events[0]} (${formatMs(t0)})`);
+
+  // Guest clicks "READY" -> triggers MATCH_START
+  t0 = performance.now();
+  res = await fetch(`${HTTP_URL}/api/room/${roomRes.code}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'guest', message: 'PLAYER_READY|' + roomRes.code })
+  });
+  const guestReadyRes = await res.json();
+  console.log(`  ✓ Guest sends PLAYER_READY -> Both ready! (${formatMs(t0)})`);
+
+  // Host polls and receives MATCH_START
+  t0 = performance.now();
+  res = await fetch(`${HTTP_URL}/api/room/${roomRes.code}/poll?role=host`);
+  const hostMatchStart = await res.json();
+  console.log(`  ✓ Host Poll -> Received MATCH_START: ${hostMatchStart.events[0]?.slice(0, 40)}... (${formatMs(t0)})`);
+
+  // In-Game Action Relay
   t0 = performance.now();
   res = await fetch(`${HTTP_URL}/api/room/${roomRes.code}/action`, {
     method: 'POST',
@@ -100,12 +136,12 @@ async function runLocalServerTests() {
     body: JSON.stringify({ role: 'host', message: 'DUEL_ACTION|LocalTester|0|true|3|3|100|1' })
   });
   const actRes = await res.json();
-  console.log(`  ✓ POST /action -> success: ${actRes.success} (${formatMs(t0)})`);
+  console.log(`  ✓ In-Game Action -> success: ${actRes.success} (${formatMs(t0)})`);
 
   t0 = performance.now();
   res = await fetch(`${HTTP_URL}/api/room/${roomRes.code}/poll?role=guest`);
   const guestPoll = await res.json();
-  console.log(`  ✓ GET /poll?role=guest -> Received ${guestPoll.events.length} event(s): ${guestPoll.events[0]} (${formatMs(t0)})`);
+  console.log(`  ✓ Guest Poll -> Received Action event: ${guestPoll.events.find(e => e.startsWith('DUEL_ACTION'))} (${formatMs(t0)})`);
 
   console.log('\n[TEST 6/8] Submitting & Fetching Leaderboard...');
   t0 = performance.now();
