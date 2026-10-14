@@ -2,6 +2,13 @@
 
 All notable changes to the **GoQuiz Adventure** project are documented here. This changelog is dynamically embedded into both the Android and Desktop builds.
 
+## [1.3.0] - 2026-10-14
+### Added
+- **Secret Developer Database Inspector**: Mobile-scale SQLite database browser to inspect tables, view column schemas, browse rows, and run custom SQL queries in-app.
+- **Hardware Gesture Combo Trigger**: Volume Up + Volume Down combo arming with tactile haptic ticks (20ms) and double-vibration pulse + Shake detection.
+- **Master Password Authorization**: Authorization prompt requiring master authorization key (`"GQA-12345"`).
+- **Multi-Channel Hardware Reliability**: System ContentObserver and Activity key dispatch for rock-solid hardware volume button response.
+
 ## [1.2.2-b1] - 2026-10-14
 ### Added
 - **20-Second Matchmaking Countdown & Ready Check**: Required mutual confirmation before launching 1v1 PvP duels for both Global (Cloud) and Local LAN.
