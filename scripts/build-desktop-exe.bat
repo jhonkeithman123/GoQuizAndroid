@@ -8,7 +8,7 @@ echo ===================================================
 cd /d "%~dp0\.."
 
 echo [1/4] Compiling Java desktop classes...
-javac -encoding UTF-8 -d desktop app/src/goquiz/QuizServer.java desktop/QuizGame.java
+javac -encoding UTF-8 -cp "desktop;desktop\sqlite-jdbc.jar" -d desktop app/src/goquiz/QuizServer.java desktop/QuizGame.java
 if %errorlevel% neq 0 (
     echo [ERROR] Java compilation failed!
     exit /b 1
@@ -26,7 +26,15 @@ set "TARGET_DIR=dist\v!VER_NAME!"
 if not exist "!TARGET_DIR!" mkdir "!TARGET_DIR!"
 
 echo [2/4] Packaging GoQuiz-v!VER_NAME!.jar...
+if exist "desktop\sqlite-jdbc.jar" (
+    pushd desktop
+    jar xf sqlite-jdbc.jar
+    popd
+)
 jar cfe "!TARGET_DIR!\GoQuiz-v!VER_NAME!.jar" QuizGame -C desktop .
+if exist "desktop\org" rmdir /s /q "desktop\org" 2>nul
+if exist "desktop\META-INF" rmdir /s /q "desktop\META-INF" 2>nul
+del /q "desktop\sqlite-jdbc.properties" 2>nul
 if %errorlevel% neq 0 (
     echo [ERROR] JAR packaging failed!
     exit /b 1
@@ -56,7 +64,7 @@ set "HAS_JRE=0"
 where jlink >nul 2>nul
 if %errorlevel% equ 0 (
     if exist "!TARGET_DIR!\jre" rmdir /s /q "!TARGET_DIR!\jre"
-    jlink --add-modules java.base,java.desktop --strip-debug --no-man-pages --no-header-files --compress=2 --output "!TARGET_DIR!\jre"
+    jlink --add-modules java.base,java.desktop,java.sql --strip-debug --no-man-pages --no-header-files --compress=2 --output "!TARGET_DIR!\jre"
     if exist "!TARGET_DIR!\jre\bin\javaw.exe" set "HAS_JRE=1"
 )
 

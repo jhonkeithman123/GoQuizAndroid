@@ -33,6 +33,9 @@ import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.nio.charset.StandardCharsets;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
 
 public class MainActivity extends Activity {
 
@@ -66,6 +69,142 @@ public class MainActivity extends Activity {
     }
 
     // ==========================================
+    // SQLITE DATABASE HELPER (Student Accounts)
+    // ==========================================
+    static class QuizDatabaseHelper extends SQLiteOpenHelper {
+        private static final String DB_NAME = "goquiz.db";
+        private static final int DB_VERSION = 1;
+        public static final String TABLE_STUDENTS = "student_accounts";
+
+        public QuizDatabaseHelper(Context context) {
+            super(context, DB_NAME, null, DB_VERSION);
+        }
+
+        @Override
+        public void onCreate(SQLiteDatabase db) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_STUDENTS + " ("
+                    + "name TEXT PRIMARY KEY COLLATE NOCASE, "
+                    + "grade TEXT, "
+                    + "section TEXT, "
+                    + "gender TEXT, "
+                    + "password TEXT, "
+                    + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                    + ");");
+        }
+
+        @Override
+        public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+            // Future schema upgrades
+        }
+
+        public synchronized boolean insertStudent(Account a) {
+            if (a == null || a.name == null || a.name.trim().isEmpty()) return false;
+            SQLiteDatabase db = getWritableDatabase();
+            ContentValues cv = new ContentValues();
+            cv.put("name", a.name.trim());
+            cv.put("grade", a.grade != null ? a.grade : "");
+            cv.put("section", a.section != null ? a.section : "");
+            cv.put("gender", a.gender != null ? a.gender : "Male");
+            cv.put("password", a.password != null ? a.password : "");
+            long res = db.insertWithOnConflict(TABLE_STUDENTS, null, cv, SQLiteDatabase.CONFLICT_FAIL);
+            return res != -1;
+        }
+
+        public synchronized boolean updateStudent(Account a) {
+            if (a == null || a.name == null) return false;
+            SQLiteDatabase db = getWritableDatabase();
+            ContentValues cv = new ContentValues();
+            cv.put("grade", a.grade != null ? a.grade : "");
+            cv.put("section", a.section != null ? a.section : "");
+            cv.put("gender", a.gender != null ? a.gender : "Male");
+            cv.put("password", a.password != null ? a.password : "");
+            int rows = db.update(TABLE_STUDENTS, cv, "name = ? COLLATE NOCASE", new String[]{a.name.trim()});
+            return rows > 0;
+        }
+
+        public synchronized boolean deleteStudent(String name) {
+            if (name == null || name.trim().isEmpty()) return false;
+            SQLiteDatabase db = getWritableDatabase();
+            int rows = db.delete(TABLE_STUDENTS, "name = ? COLLATE NOCASE", new String[]{name.trim()});
+            return rows > 0;
+        }
+
+        public synchronized Account getStudent(String name) {
+            if (name == null || name.trim().isEmpty()) return null;
+            SQLiteDatabase db = getReadableDatabase();
+            Cursor c = null;
+            try {
+                c = db.query(TABLE_STUDENTS,
+                        new String[]{"name", "grade", "section", "gender", "password"},
+                        "name = ? COLLATE NOCASE", new String[]{name.trim()},
+                        null, null, null);
+                if (c != null && c.moveToFirst()) {
+                    return new Account(
+                            c.getString(0),
+                            c.getString(1),
+                            c.getString(2),
+                            c.getString(3),
+                            c.getString(4)
+                    );
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (c != null) c.close();
+            }
+            return null;
+        }
+
+        public synchronized List<Account> getAllStudents() {
+            List<Account> list = new ArrayList<>();
+            SQLiteDatabase db = getReadableDatabase();
+            Cursor c = null;
+            try {
+                c = db.rawQuery("SELECT name, grade, section, gender, password FROM " + TABLE_STUDENTS + " ORDER BY name COLLATE NOCASE ASC", null);
+                if (c != null && c.moveToFirst()) {
+                    do {
+                        list.add(new Account(
+                                c.getString(0),
+                                c.getString(1),
+                                c.getString(2),
+                                c.getString(3),
+                                c.getString(4)
+                        ));
+                    } while (c.moveToNext());
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (c != null) c.close();
+            }
+            return list;
+        }
+
+        public synchronized void migrateFromSharedPreferences(SharedPreferences prefs) {
+            try {
+                Map<String, ?> all = prefs.getAll();
+                SQLiteDatabase db = getWritableDatabase();
+                for (Map.Entry<String, ?> entry : all.entrySet()) {
+                    String k = entry.getKey();
+                    if (k != null && k.startsWith("acct_")) {
+                        Object val = entry.getValue();
+                        if (val instanceof String) {
+                            String[] p = ((String) val).split("\\|", -1);
+                            if (p.length >= 5) {
+                                ContentValues cv = new ContentValues();
+                                cv.put("name", p[0].trim());
+                                cv.put("grade", p[1]);
+                                cv.put("section", p[2]);
+                                cv.put("gender", p[3]);
+                                cv.put("password", p[4]);
+                                db.insertWithOnConflict(TABLE_STUDENTS, null, cv, SQLiteDatabase.CONFLICT_IGNORE);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
+    // ==========================================
     // CONSTANTS & COLORS (Matched with Desktop)
     // ==========================================
     final String[] LANGUAGES = {"HTML", "CSS", "JavaScript", "Java"};
@@ -80,6 +219,7 @@ public class MainActivity extends Activity {
     // STATE & REPOSITORIES
     // ==========================================
     SharedPreferences prefs;
+    QuizDatabaseHelper dbHelper;
     Map<String, Map<String, Map<Integer, ArrayList<Question>>>> categorizedQuestionBank = new LinkedHashMap<>();
     Map<String, ArrayList<ArrayList<Question>>> questionBank = new LinkedHashMap<>();
 
@@ -804,6 +944,8 @@ public class MainActivity extends Activity {
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
         initCrashHandler();
         prefs = getSharedPreferences("goquiz", MODE_PRIVATE);
+        dbHelper = new QuizDatabaseHelper(this);
+        dbHelper.migrateFromSharedPreferences(prefs);
         String savedFraming = prefs.getString("cameraFramingMode", FramingMode.FOLLOW_STORY.name());
         try {
             currentFramingMode = FramingMode.valueOf(savedFraming);
@@ -816,14 +958,11 @@ public class MainActivity extends Activity {
 
         String loggedInUser = prefs.getString("loggedInStudent", null);
         if (loggedInUser != null && !loggedInUser.isEmpty()) {
-            String raw = prefs.getString("acct_" + loggedInUser, null);
-            if (raw != null) {
-                String[] a = raw.split("\\|", -1);
-                if (a.length >= 5) {
-                    applyCurrentStudentAccount(new Account(a[0], a[1], a[2], a[3], a[4]));
-                    showHomeScreen();
-                    return;
-                }
+            Account a = dbHelper.getStudent(loggedInUser);
+            if (a != null) {
+                applyCurrentStudentAccount(a);
+                showHomeScreen();
+                return;
             }
         }
 
@@ -3172,6 +3311,12 @@ public class MainActivity extends Activity {
 
         addCenteredMenuButton(p, login);
         addCenteredButton(p, register, 230);
+        addVerticalSpacing(p, 6);
+
+        Button dbInspectorBtn = createStyledButton("🛠️ DB INSPECTOR");
+        setButtonFantasyStyle(dbInspectorBtn, Color.rgb(35, 45, 60), GOLD_LIGHT);
+        addCenteredButton(p, dbInspectorBtn, 200);
+        dbInspectorBtn.setOnClickListener(v -> showDatabaseInspector());
 
         login.setOnClickListener(v -> {
             String n = name.getText().toString().trim();
@@ -3180,17 +3325,16 @@ public class MainActivity extends Activity {
                 showAlertDialog("Please enter your student name and password.");
                 return;
             }
-            String raw = prefs.getString("acct_" + n.toLowerCase(Locale.ROOT), null);
-            if (raw == null) {
-                showAlertDialog("Student account not found. Please register first.");
+            Account a = dbHelper.getStudent(n);
+            if (a == null) {
+                showAlertDialog("Student account not found in SQLite database. Please register first.");
                 return;
             }
-            String[] a = raw.split("\\|", -1);
-            if (a.length < 5 || !a[4].equals(pw)) {
+            if (!a.password.equals(pw)) {
                 showAlertDialog("Incorrect password.");
                 return;
             }
-            applyCurrentStudentAccount(new Account(a[0], a[1], a[2], a[3], a[4]));
+            applyCurrentStudentAccount(a);
             showHomeScreen();
         });
 
@@ -3238,15 +3382,17 @@ public class MainActivity extends Activity {
                 showAlertDialog("All fields are required.");
                 return;
             }
-            String key = "acct_" + nm.toLowerCase(Locale.ROOT);
-            if (prefs.contains(key)) {
-                showAlertDialog("That student name is already registered.");
+            if (dbHelper.getStudent(nm) != null) {
+                showAlertDialog("That student name is already registered in SQLite.");
                 return;
             }
-            String val = nm + "|" + selectedGrade[0] + "|" + ss + "|" + selectedGender[0] + "|" + pp;
-            prefs.edit().putString(key, val).apply();
-            applyCurrentStudentAccount(new Account(nm, selectedGrade[0], ss, selectedGender[0], pp));
-            showHomeScreen();
+            Account newAcct = new Account(nm, selectedGrade[0], ss, selectedGender[0], pp);
+            if (dbHelper.insertStudent(newAcct)) {
+                applyCurrentStudentAccount(newAcct);
+                showHomeScreen();
+            } else {
+                showAlertDialog("Failed to save student account to SQLite.");
+            }
         });
 
         back.setOnClickListener(v -> showLoginScreen());
@@ -3265,16 +3411,387 @@ public class MainActivity extends Activity {
     void updateCurrentStudentGender(String newGender) {
         gender = newGender;
         if (studentName != null && !studentName.isEmpty()) {
-            String key = "acct_" + studentName.toLowerCase(Locale.ROOT);
-            String raw = prefs.getString(key, null);
-            if (raw != null) {
-                String[] a = raw.split("\\|", -1);
-                if (a.length >= 5) {
-                    String updated = a[0] + "|" + a[1] + "|" + a[2] + "|" + newGender + "|" + a[4];
-                    prefs.edit().putString(key, updated).apply();
-                }
+            Account a = dbHelper.getStudent(studentName);
+            if (a != null) {
+                a.gender = newGender;
+                dbHelper.updateStudent(a);
             }
         }
+    }
+
+    void showDatabaseInspector() {
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        float d = getResources().getDisplayMetrics().density;
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding((int) (18 * d), (int) (16 * d), (int) (18 * d), (int) (16 * d));
+        root.setBackgroundResource(R.drawable.card_panel);
+
+        TextView title = createStyledTextView("🛠️ SQLITE DB INSPECTOR", 18);
+        title.setTextColor(GOLD_LIGHT);
+        title.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.addView(title);
+
+        TextView sub = createStyledTextView("goquiz.db • TABLE: student_accounts", 11);
+        sub.setTextColor(MUTED);
+        sub.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.addView(sub);
+        addVerticalSpacing(root, 6);
+
+        final TextView countText = createStyledTextView("Loading...", 11);
+        countText.setTextColor(Color.rgb(120, 200, 255));
+        countText.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.addView(countText);
+        addVerticalSpacing(root, 6);
+
+        EditText search = createStyledEditText("Search students by name, grade, section...");
+        search.setTextSize(12);
+        search.setPadding((int) (8 * d), (int) (6 * d), (int) (8 * d), (int) (6 * d));
+        root.addView(search);
+        addVerticalSpacing(root, 8);
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (int) (260 * d)
+        );
+        scroll.setLayoutParams(scrollParams);
+
+        LinearLayout listContainer = new LinearLayout(this);
+        listContainer.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(listContainer);
+        root.addView(scroll);
+        addVerticalSpacing(root, 10);
+
+        final Runnable[] refreshRef = new Runnable[1];
+        refreshRef[0] = () -> {
+            listContainer.removeAllViews();
+            String query = search.getText().toString().trim().toLowerCase(Locale.ROOT);
+            List<Account> all = dbHelper.getAllStudents();
+            List<Account> filtered = new ArrayList<>();
+            for (Account a : all) {
+                if (query.isEmpty() ||
+                        a.name.toLowerCase(Locale.ROOT).contains(query) ||
+                        a.grade.toLowerCase(Locale.ROOT).contains(query) ||
+                        a.section.toLowerCase(Locale.ROOT).contains(query)) {
+                    filtered.add(a);
+                }
+            }
+            countText.setText("Registered Accounts: " + filtered.size() + " of " + all.size());
+
+            if (filtered.isEmpty()) {
+                TextView empty = createStyledTextView(all.isEmpty() ? "No student accounts in SQLite database yet." : "No accounts match your search.", 12);
+                empty.setTextColor(MUTED);
+                empty.setGravity(Gravity.CENTER);
+                empty.setPadding(0, (int) (30 * d), 0, 0);
+                listContainer.addView(empty);
+                return;
+            }
+
+            for (Account a : filtered) {
+                LinearLayout card = new LinearLayout(this);
+                card.setOrientation(LinearLayout.VERTICAL);
+                card.setPadding((int) (10 * d), (int) (8 * d), (int) (10 * d), (int) (8 * d));
+                GradientDrawable bg = new GradientDrawable();
+                bg.setColor(Color.argb(160, 25, 28, 38));
+                bg.setCornerRadius(6 * d);
+                bg.setStroke((int) (1 * d), Color.argb(140, 70, 75, 95));
+                card.setBackground(bg);
+
+                // Row 1: Name + Gender Badge
+                LinearLayout row1 = new LinearLayout(this);
+                row1.setOrientation(LinearLayout.HORIZONTAL);
+                row1.setGravity(Gravity.CENTER_VERTICAL);
+
+                TextView nameView = createStyledTextView(a.name, 14);
+                nameView.setTextColor(GOLD_LIGHT);
+                LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+                nameView.setLayoutParams(nameParams);
+                row1.addView(nameView);
+
+                TextView genBadge = createStyledTextView("Female".equalsIgnoreCase(a.gender) ? "♀ Girl" : "♂ Boy", 10);
+                genBadge.setTextColor("Female".equalsIgnoreCase(a.gender) ? Color.rgb(255, 140, 180) : Color.rgb(100, 180, 255));
+                genBadge.setPadding((int) (6 * d), (int) (2 * d), (int) (6 * d), (int) (2 * d));
+                GradientDrawable genBg = new GradientDrawable();
+                genBg.setColor(Color.argb(80, 40, 45, 60));
+                genBg.setCornerRadius(4 * d);
+                genBadge.setBackground(genBg);
+                row1.addView(genBadge);
+                card.addView(row1);
+
+                // Row 2: Details (Grade, Section, Password)
+                TextView details = createStyledTextView(a.grade + " • " + a.section + "  |  Password: " + a.password, 11);
+                details.setTextColor(TEXT);
+                card.addView(details);
+                addVerticalSpacing(card, 4);
+
+                // Row 3: Action Buttons (Edit, Delete)
+                LinearLayout actions = new LinearLayout(this);
+                actions.setOrientation(LinearLayout.HORIZONTAL);
+                actions.setGravity(Gravity.END);
+
+                Button editBtn = createStyledButton("EDIT");
+                setButtonFantasyStyle(editBtn, Color.rgb(35, 60, 95), Color.rgb(120, 200, 255));
+                editBtn.setTextSize(10);
+                editBtn.setPadding((int) (10 * d), (int) (2 * d), (int) (10 * d), (int) (2 * d));
+                actions.addView(editBtn);
+
+                View spacer = new View(this);
+                actions.addView(spacer, new LinearLayout.LayoutParams((int) (8 * d), 1));
+
+                Button delBtn = createStyledButton("DELETE");
+                setButtonFantasyStyle(delBtn, Color.rgb(85, 30, 30), Color.rgb(255, 120, 120));
+                delBtn.setTextSize(10);
+                delBtn.setPadding((int) (10 * d), (int) (2 * d), (int) (10 * d), (int) (2 * d));
+                actions.addView(delBtn);
+
+                card.addView(actions);
+                listContainer.addView(card);
+                addVerticalSpacing(listContainer, 6);
+
+                editBtn.setOnClickListener(v -> showEditStudentDialog(a, refreshRef[0]));
+                delBtn.setOnClickListener(v -> {
+                    showFantasyConfirmDialog(
+                            "DELETE STUDENT?",
+                            "Are you sure you want to delete student account \"" + a.name + "\" from SQLite?",
+                            "DELETE",
+                            "CANCEL",
+                            () -> {
+                                dbHelper.deleteStudent(a.name);
+                                refreshRef[0].run();
+                            }
+                    );
+                });
+            }
+        };
+
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) { refreshRef[0].run(); }
+            public void afterTextChanged(android.text.Editable s) {}
+        });
+
+        refreshRef[0].run();
+
+        // Bottom Controls: Add Account, Export JSON, Close
+        LinearLayout bottomRow = new LinearLayout(this);
+        bottomRow.setOrientation(LinearLayout.HORIZONTAL);
+        bottomRow.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        Button addBtn = createStyledButton("+ ADD ACCOUNT");
+        setButtonFantasyStyle(addBtn, Color.rgb(40, 80, 50), Color.rgb(120, 255, 150));
+        addBtn.setTextSize(11);
+        addBtn.setPadding((int) (8 * d), (int) (4 * d), (int) (8 * d), (int) (4 * d));
+        bottomRow.addView(addBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        View bSpacer1 = new View(this);
+        bottomRow.addView(bSpacer1, new LinearLayout.LayoutParams((int) (6 * d), 1));
+
+        Button exportBtn = createStyledButton("EXPORT JSON");
+        setButtonFantasyStyle(exportBtn, Color.rgb(45, 50, 70), GOLD_LIGHT);
+        exportBtn.setTextSize(11);
+        exportBtn.setPadding((int) (8 * d), (int) (4 * d), (int) (8 * d), (int) (4 * d));
+        bottomRow.addView(exportBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        View bSpacer2 = new View(this);
+        bottomRow.addView(bSpacer2, new LinearLayout.LayoutParams((int) (6 * d), 1));
+
+        Button closeBtn = createStyledButton("CLOSE");
+        closeBtn.setTextSize(11);
+        closeBtn.setPadding((int) (8 * d), (int) (4 * d), (int) (8 * d), (int) (4 * d));
+        bottomRow.addView(closeBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f));
+
+        root.addView(bottomRow);
+
+        addBtn.setOnClickListener(v -> showAddStudentDialog(refreshRef[0]));
+        exportBtn.setOnClickListener(v -> {
+            List<Account> all = dbHelper.getAllStudents();
+            JSONArray arr = new JSONArray();
+            try {
+                for (Account a : all) {
+                    JSONObject obj = new JSONObject();
+                    obj.put("name", a.name);
+                    obj.put("grade", a.grade);
+                    obj.put("section", a.section);
+                    obj.put("gender", a.gender);
+                    obj.put("password", a.password);
+                    arr.put(obj);
+                }
+                String jsonStr = arr.toString(2);
+                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newPlainText("GoQuiz Accounts", jsonStr));
+                    Toast.makeText(this, "Copied " + all.size() + " accounts (JSON) to clipboard!", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(this, "Export failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
+        closeBtn.setOnClickListener(v -> dialog.dismiss());
+
+        dialog.setContentView(root);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            dialog.getWindow().setDimAmount(0.75f);
+            int dialogWidth = Math.min(
+                    (int) (getResources().getDisplayMetrics().widthPixels * 0.94),
+                    (int) (520 * d)
+            );
+            dialog.getWindow().setLayout(dialogWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
+    }
+
+    void showEditStudentDialog(Account a, Runnable onUpdated) {
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        float d = getResources().getDisplayMetrics().density;
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding((int) (20 * d), (int) (18 * d), (int) (20 * d), (int) (18 * d));
+        layout.setBackgroundResource(R.drawable.card_panel);
+
+        TextView t = createStyledTextView("EDIT ACCOUNT: " + a.name, 16);
+        t.setTextColor(GOLD_LIGHT);
+        t.setGravity(Gravity.CENTER_HORIZONTAL);
+        layout.addView(t);
+        addVerticalSpacing(layout, 8);
+
+        final String[] selectedGrade = new String[]{a.grade != null && !a.grade.isEmpty() ? a.grade : "Grade 11"};
+        Button gr = createFantasySelectorButton("Grade", new String[]{"Grade 11", "Grade 12"}, "Grade 12".equalsIgnoreCase(selectedGrade[0]) ? 1 : 0, val -> selectedGrade[0] = val);
+        EditText sec = createStyledEditText("Section");
+        sec.setText(a.section != null ? a.section : "");
+        final String[] selectedGender = new String[]{a.gender != null && !a.gender.isEmpty() ? a.gender : "Male"};
+        Button ge = createFantasySelectorButton("Hero Character", new String[]{"Boy (Male)", "Girl (Female)"}, "Female".equalsIgnoreCase(selectedGender[0]) ? 1 : 0, val -> {
+            selectedGender[0] = val.contains("Girl") ? "Female" : "Male";
+        });
+        EditText pw = createStyledEditText("Password");
+        pw.setText(a.password != null ? a.password : "");
+
+        layout.addView(gr);
+        layout.addView(sec);
+        layout.addView(ge);
+        layout.addView(pw);
+        addVerticalSpacing(layout, 10);
+
+        LinearLayout btns = new LinearLayout(this);
+        btns.setOrientation(LinearLayout.HORIZONTAL);
+        btns.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        Button save = createStyledButton("SAVE");
+        setButtonFantasyStyle(save, Color.rgb(116, 67, 18), GOLD_LIGHT);
+        Button cancel = createStyledButton("CANCEL");
+
+        btns.addView(save, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        View sp = new View(this);
+        btns.addView(sp, new LinearLayout.LayoutParams((int) (8 * d), 1));
+        btns.addView(cancel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        layout.addView(btns);
+
+        save.setOnClickListener(v -> {
+            String ss = sec.getText().toString().trim();
+            String pp = pw.getText().toString().trim();
+            if (ss.isEmpty() || pp.isEmpty()) {
+                showAlertDialog("Section and Password cannot be empty.");
+                return;
+            }
+            a.grade = selectedGrade[0];
+            a.section = ss;
+            a.gender = selectedGender[0];
+            a.password = pp;
+            dbHelper.updateStudent(a);
+            dialog.dismiss();
+            if (onUpdated != null) onUpdated.run();
+        });
+        cancel.setOnClickListener(v -> dialog.dismiss());
+
+        dialog.setContentView(layout);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            int dialogWidth = Math.min((int) (getResources().getDisplayMetrics().widthPixels * 0.90), (int) (440 * d));
+            dialog.getWindow().setLayout(dialogWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
+    }
+
+    void showAddStudentDialog(Runnable onAdded) {
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        float d = getResources().getDisplayMetrics().density;
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding((int) (20 * d), (int) (18 * d), (int) (20 * d), (int) (18 * d));
+        layout.setBackgroundResource(R.drawable.card_panel);
+
+        TextView t = createStyledTextView("ADD NEW ACCOUNT (SQLITE)", 16);
+        t.setTextColor(GOLD_LIGHT);
+        t.setGravity(Gravity.CENTER_HORIZONTAL);
+        layout.addView(t);
+        addVerticalSpacing(layout, 8);
+
+        EditText name = createStyledEditText("Student Name");
+        final String[] selectedGrade = new String[]{"Grade 11"};
+        Button gr = createFantasySelectorButton("Grade", new String[]{"Grade 11", "Grade 12"}, 0, val -> selectedGrade[0] = val);
+        EditText sec = createStyledEditText("Section");
+        final String[] selectedGender = new String[]{"Male"};
+        Button ge = createFantasySelectorButton("Hero Character", new String[]{"Boy (Male)", "Girl (Female)"}, 0, val -> {
+            selectedGender[0] = val.contains("Girl") ? "Female" : "Male";
+        });
+        EditText pw = createStyledEditText("Password");
+
+        layout.addView(name);
+        layout.addView(gr);
+        layout.addView(sec);
+        layout.addView(ge);
+        layout.addView(pw);
+        addVerticalSpacing(layout, 10);
+
+        LinearLayout btns = new LinearLayout(this);
+        btns.setOrientation(LinearLayout.HORIZONTAL);
+        btns.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        Button save = createStyledButton("CREATE");
+        setButtonFantasyStyle(save, Color.rgb(40, 80, 50), Color.rgb(120, 255, 150));
+        Button cancel = createStyledButton("CANCEL");
+
+        btns.addView(save, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        View sp = new View(this);
+        btns.addView(sp, new LinearLayout.LayoutParams((int) (8 * d), 1));
+        btns.addView(cancel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        layout.addView(btns);
+
+        save.setOnClickListener(v -> {
+            String nm = name.getText().toString().trim();
+            String ss = sec.getText().toString().trim();
+            String pp = pw.getText().toString().trim();
+            if (nm.isEmpty() || ss.isEmpty() || pp.isEmpty()) {
+                showAlertDialog("All fields are required.");
+                return;
+            }
+            if (dbHelper.getStudent(nm) != null) {
+                showAlertDialog("That student name is already registered.");
+                return;
+            }
+            Account newAcct = new Account(nm, selectedGrade[0], ss, selectedGender[0], pp);
+            if (dbHelper.insertStudent(newAcct)) {
+                dialog.dismiss();
+                if (onAdded != null) onAdded.run();
+            } else {
+                showAlertDialog("Failed to create account.");
+            }
+        });
+        cancel.setOnClickListener(v -> dialog.dismiss());
+
+        dialog.setContentView(layout);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            int dialogWidth = Math.min((int) (getResources().getDisplayMetrics().widthPixels * 0.90), (int) (440 * d));
+            dialog.getWindow().setLayout(dialogWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
     }
 
     String getProgressStorageKey(String d, String l) {
@@ -4142,6 +4659,12 @@ public class MainActivity extends Activity {
             );
         });
 
+        Button dbInspectorBtn = createStyledButton("🛠️ SQLITE DATABASE INSPECTOR");
+        setButtonFantasyStyle(dbInspectorBtn, Color.rgb(35, 45, 60), GOLD_LIGHT);
+        addCenteredButton(p, dbInspectorBtn, 260);
+        dbInspectorBtn.setOnClickListener(v -> showDatabaseInspector());
+
+        addVerticalSpacing(p, 6);
         Button logout = createStyledButton("LOG OUT");
         setButtonFantasyStyle(logout, Color.rgb(110, 35, 35), Color.rgb(255, 120, 120));
         Button back = createStyledButton("BACK TO HOME");
