@@ -3971,6 +3971,11 @@ public class QuizGame extends JFrame {
         JLabel waitingCodeLabel;
         JPanel roomsContainer;
 
+        boolean isCloud = false;
+        String cloudBaseUrl = "";
+        String cloudRole = "host";
+        Thread cloudPollThread;
+
         DuelClient(String host, int port) throws IOException {
             this.myName = studentName.isEmpty() ? "Player" : studentName;
             this.myGender = getGenderFolder();
@@ -3995,7 +4000,81 @@ public class QuizGame extends JFrame {
             send("INFO");
         }
 
+        // Cloud REST Relay Constructor
+        DuelClient(String cloudBaseUrl, String roomCode, String cloudRole) {
+            this.isCloud = true;
+            this.myName = studentName.isEmpty() ? "Player" : studentName;
+            this.myGender = getGenderFolder();
+            this.cloudBaseUrl = cloudBaseUrl.endsWith("/") ? cloudBaseUrl.substring(0, cloudBaseUrl.length() - 1) : cloudBaseUrl;
+            this.code = roomCode;
+            this.cloudRole = cloudRole;
+
+            cloudPollThread = new Thread(() -> {
+                System.out.println("[QuizDesktopCloud] Started event poll for #" + roomCode + " (" + cloudRole + ")");
+                while (!closed) {
+                    try {
+                        String ep = this.cloudBaseUrl + "/api/room/" + this.code + "/poll?role=" + this.cloudRole;
+                        URL u = new URL(ep);
+                        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                        conn.setConnectTimeout(6000);
+                        conn.setReadTimeout(6000);
+                        if (conn.getResponseCode() == 200) {
+                            BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                            StringBuilder sb = new StringBuilder();
+                            String line;
+                            while ((line = r.readLine()) != null) sb.append(line);
+                            r.close();
+                            String json = sb.toString();
+                            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"events\"\\s*:\\s*\\[(.*?)\\]").matcher(json);
+                            if (m.find()) {
+                                String rawArray = m.group(1);
+                                if (!rawArray.trim().isEmpty()) {
+                                    java.util.regex.Matcher itemMatcher = java.util.regex.Pattern.compile("\"((?:\\\\\"|[^\"])*)\"").matcher(rawArray);
+                                    while (itemMatcher.find()) {
+                                        String event = itemMatcher.group(1).replace("\\\"", "\"").replace("\\\\", "\\");
+                                        System.out.println("[QuizDesktopCloud] Poll RX: " + event);
+                                        handleDuelMessage(event);
+                                    }
+                                }
+                            }
+                        } else if (conn.getResponseCode() == 404) {
+                            break;
+                        }
+                    } catch (Exception ex) {
+                        try { Thread.sleep(400); } catch (Exception ignored) {}
+                    }
+                }
+                System.out.println("[QuizDesktopCloud] Poll thread stopped for #" + roomCode);
+            }, "QuizDesktopCloudPoll");
+            cloudPollThread.setDaemon(true);
+            cloudPollThread.start();
+        }
+
         synchronized void send(String msg) {
+            if (isCloud) {
+                new Thread(() -> {
+                    try {
+                        String ep = cloudBaseUrl + "/api/room/" + code + "/action";
+                        URL u = new URL(ep);
+                        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                        conn.setRequestMethod("POST");
+                        conn.setConnectTimeout(4000);
+                        conn.setReadTimeout(4000);
+                        conn.setDoOutput(true);
+                        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                        String payload = String.format("{\"role\":\"%s\",\"message\":\"%s\"}",
+                                escapeJson(cloudRole),
+                                escapeJson(msg));
+                        try (OutputStream os = conn.getOutputStream()) {
+                            os.write(payload.getBytes(StandardCharsets.UTF_8));
+                        }
+                        conn.getResponseCode();
+                    } catch (Exception ex) {
+                        System.out.println("[QuizDesktopCloud] Action send error: " + ex.getMessage());
+                    }
+                }).start();
+                return;
+            }
             try {
                 if (out != null) {
                     out.write(msg);
@@ -4008,6 +4087,28 @@ public class QuizGame extends JFrame {
         void close() {
             if (closed) return;
             closed = true;
+            if (isCloud) {
+                new Thread(() -> {
+                    try {
+                        String ep = cloudBaseUrl + "/api/room/" + code + "/leave";
+                        URL u = new URL(ep);
+                        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                        conn.setRequestMethod("POST");
+                        conn.setConnectTimeout(3000);
+                        conn.setReadTimeout(3000);
+                        conn.setDoOutput(true);
+                        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                        String payload = String.format("{\"role\":\"%s\",\"name\":\"%s\"}",
+                                escapeJson(cloudRole),
+                                escapeJson(myName));
+                        try (OutputStream os = conn.getOutputStream()) {
+                            os.write(payload.getBytes(StandardCharsets.UTF_8));
+                        }
+                        conn.getResponseCode();
+                    } catch (Exception ignored) {}
+                }).start();
+                return;
+            }
             try {
                 if (socket != null && !socket.isClosed()) {
                     send("LEAVE_ROOM");
@@ -5016,8 +5117,7 @@ public class QuizGame extends JFrame {
                         }
                         joinB.addActionListener(e -> {
                             codeInput.setText(rCode);
-                            statusLabel.setText("● Selected Global Room #" + rCode + " • Click JOIN DUEL ➔");
-                            statusLabel.setForeground(new Color(130, 205, 255));
+                            joinBtn.doClick();
                         });
 
                         row.add(info, BorderLayout.WEST);
@@ -5236,10 +5336,14 @@ public class QuizGame extends JFrame {
             statusLabel.setForeground(new Color(130, 205, 255));
             new Thread(() -> {
                 long startMs = System.currentTimeMillis();
-                String baseUrl = cloudServerUrl != null ? cloudServerUrl.trim() : "https://goquizandroid.onrender.com";
-                if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
+                String bUrl = cloudServerUrl != null ? cloudServerUrl.trim() : "https://goquizandroid.onrender.com";
+                if (!bUrl.startsWith("http://") && !bUrl.startsWith("https://")) bUrl = "https://" + bUrl;
+                final String baseUrl = bUrl;
                 String ep = baseUrl.endsWith("/") ? baseUrl + "api/room/create" : baseUrl + "/api/room/create";
                 System.out.println("[QuizDesktop] Publishing global room to: " + ep);
+
+                List<Question> qs = loadDeterministicDuelQuestions(sLang, sDiff, System.currentTimeMillis());
+                String qPayload = serializeDuelQuestions(qs);
 
                 String gCode = null;
                 try {
@@ -5250,11 +5354,12 @@ public class QuizGame extends JFrame {
                     conn.setReadTimeout(5000);
                     conn.setDoOutput(true);
                     conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                    String payload = String.format("{\"hostName\":\"%s\",\"hostGender\":\"%s\",\"language\":\"%s\",\"difficulty\":\"%s\"}",
+                    String payload = String.format("{\"hostName\":\"%s\",\"hostGender\":\"%s\",\"language\":\"%s\",\"difficulty\":\"%s\",\"questionsPayload\":\"%s\"}",
                             escapeJson(studentName.isEmpty() ? "Adventurer" : studentName),
                             escapeJson(studentGender.isEmpty() ? "Boy" : studentGender),
                             escapeJson(sLang),
-                            escapeJson(sDiff));
+                            escapeJson(sDiff),
+                            escapeJson(qPayload));
                     try (OutputStream os = conn.getOutputStream()) {
                         os.write(payload.getBytes(StandardCharsets.UTF_8));
                     }
@@ -5273,12 +5378,21 @@ public class QuizGame extends JFrame {
                 final String finalCode = gCode != null ? gCode : "G" + (100 + (int)(Math.random() * 899));
                 System.out.println("[QuizDesktop] Global room registered: #" + finalCode + " (" + elapsed + "ms)");
                 SwingUtilities.invokeLater(() -> {
+                    if (activeDuelClient != null) {
+                        activeDuelClient.close();
+                        activeDuelClient = null;
+                    }
+                    activeDuelClient = new DuelClient(baseUrl, finalCode, "host");
+                    activeDuelClient.duelQuestions = qs;
+                    activeDuelClient.duelLang = sLang;
+                    activeDuelClient.duelDiff = sDiff;
+
                     waitingCodeLbl.setText("ROOM CODE: " + finalCode);
                     waitingMsg.setText("🌐 GLOBAL CLOUD ROOM • Share this 4-letter code with your opponent worldwide!");
                     waitingCard.setVisible(true);
-                    statusLabel.setText("★ [GLOBAL HOST ACTIVE] • Room #" + finalCode + " published to Cloud Gateway (" + elapsed + "ms)");
+                    statusLabel.setText("★ [GLOBAL HOST ACTIVE] • Room #" + finalCode + " published to Cloud Gateway — Waiting for opponent...");
                     statusLabel.setForeground(new Color(130, 205, 255));
-                    JOptionPane.showMessageDialog(this, "Global Duel Room #" + finalCode + " Created!\nShare this 4-letter code with your opponent worldwide.", "Global Room Created", JOptionPane.INFORMATION_MESSAGE);
+                    JOptionPane.showMessageDialog(this, "Global Duel Room #" + finalCode + " Created!\nShare this 4-letter code with your opponent worldwide.\n\nThe match will launch automatically when your opponent joins!", "Global Room Created", JOptionPane.INFORMATION_MESSAGE);
                 });
             }, "QuizDesktopGlobalHost").start();
         } else {
@@ -5320,34 +5434,77 @@ public class QuizGame extends JFrame {
 
         boolean hasLetters = code.matches(".*[a-zA-Z].*");
         if (hasLetters) {
-            statusLabel.setText("● Checking Global Cloud Room #" + code.toUpperCase() + "...");
+            statusLabel.setText("● Joining Global Cloud Room #" + code.toUpperCase() + "...");
             statusLabel.setForeground(new Color(130, 205, 255));
             new Thread(() -> {
                 long startMs = System.currentTimeMillis();
-                String baseUrl = cloudServerUrl != null ? cloudServerUrl.trim() : "https://goquizandroid.onrender.com";
-                if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
-                String ep = (baseUrl.endsWith("/") ? baseUrl + "api/room/" : baseUrl + "/api/room/") + code.trim().toUpperCase();
-                System.out.println("[QuizDesktop] Looking up global room #" + code.toUpperCase() + " on: " + ep);
+                String bUrl = cloudServerUrl != null ? cloudServerUrl.trim() : "https://goquizandroid.onrender.com";
+                if (!bUrl.startsWith("http://") && !bUrl.startsWith("https://")) bUrl = "https://" + bUrl;
+                final String baseUrl = bUrl;
+                String ep = baseUrl.endsWith("/") ? baseUrl + "api/room/join" : baseUrl + "/api/room/join";
+                System.out.println("[QuizDesktop] Joining global room #" + code.toUpperCase() + " on: " + ep);
                 try {
                     URL u = new URL(ep);
                     HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-                    conn.setConnectTimeout(4500);
-                    conn.setReadTimeout(4500);
+                    conn.setRequestMethod("POST");
+                    conn.setConnectTimeout(6000);
+                    conn.setReadTimeout(6000);
+                    conn.setDoOutput(true);
+                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                    String payload = String.format("{\"code\":\"%s\",\"guestName\":\"%s\",\"guestGender\":\"%s\"}",
+                            escapeJson(code.toUpperCase()),
+                            escapeJson(studentName.isEmpty() ? "Adventurer" : studentName),
+                            escapeJson(studentGender.isEmpty() ? "Boy" : studentGender));
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(payload.getBytes(StandardCharsets.UTF_8));
+                    }
                     int rc = conn.getResponseCode();
                     long elapsed = System.currentTimeMillis() - startMs;
-                    System.out.println("[QuizDesktop] Global room lookup HTTP " + rc + " (" + elapsed + "ms)");
+                    System.out.println("[QuizDesktop] Global room join HTTP " + rc + " (" + elapsed + "ms)");
                     if (rc == 200) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) sb.append(line);
+                        reader.close();
+                        String respJson = sb.toString();
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"matchStartMsg\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"").matcher(respJson);
+                        String matchStartMsg = null;
+                        if (m.find()) {
+                            matchStartMsg = m.group(1).replace("\\\"", "\"").replace("\\\\", "\\");
+                        }
+
+                        final String fMsg = matchStartMsg;
                         SwingUtilities.invokeLater(() -> {
-                            JOptionPane.showMessageDialog(this, "Linked to Global Room #" + code.toUpperCase() + "!\nConnecting players to duel...", "Global Room Found", JOptionPane.INFORMATION_MESSAGE);
-                            statusLabel.setText("★ Linked to Global Room #" + code.toUpperCase());
+                            statusLabel.setText("★ Connected to Global Room #" + code.toUpperCase() + "! Launching duel...");
                             statusLabel.setForeground(new Color(90, 220, 120));
+                            if (activeDuelClient != null) {
+                                activeDuelClient.close();
+                                activeDuelClient = null;
+                            }
+                            activeDuelClient = new DuelClient(baseUrl, code.toUpperCase(), "guest");
+                            if (fMsg != null && !fMsg.isEmpty()) {
+                                activeDuelClient.handleDuelMessage(fMsg);
+                            }
                         });
                         return;
+                    } else {
+                        BufferedReader errR = new BufferedReader(new InputStreamReader(conn.getErrorStream(), StandardCharsets.UTF_8));
+                        StringBuilder errSb = new StringBuilder();
+                        String l;
+                        while ((l = errR.readLine()) != null) errSb.append(l);
+                        errR.close();
+                        String errJson = errSb.toString();
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"error\"\\s*:\\s*\"([^\"]+)\"").matcher(errJson);
+                        String errMsg = m.find() ? m.group(1) : ("Room #" + code.toUpperCase() + " not found or full.");
+                        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, errMsg, "Cannot Join Room", JOptionPane.WARNING_MESSAGE));
+                        return;
                     }
-                } catch (Exception ignored) {}
-                long elapsed = System.currentTimeMillis() - startMs;
-                System.out.println("[QuizDesktop] Room #" + code.toUpperCase() + " not found or timed out (" + elapsed + "ms)");
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Global room #" + code.toUpperCase() + " not found or expired.", "Not Found", JOptionPane.WARNING_MESSAGE));
+                } catch (Exception ex) {
+                    long elapsed = System.currentTimeMillis() - startMs;
+                    System.out.println("[QuizDesktop] Room #" + code.toUpperCase() + " join failed: " + ex.getMessage());
+                }
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Could not connect to Global Room #" + code.toUpperCase() + ".\nPlease verify the code or check your internet connection.", "Connection Error", JOptionPane.ERROR_MESSAGE));
             }, "QuizDesktopCloudJoin").start();
         } else {
             ensureConnected.accept(false);

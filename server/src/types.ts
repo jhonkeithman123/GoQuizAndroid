@@ -75,6 +75,11 @@ export interface IDuelRoom {
   active: boolean;
   finished: boolean;
   createdAt: number;
+  hostEvents?: string[];
+  guestEvents?: string[];
+  lastHostPing?: number;
+  lastGuestPing?: number;
+  pushEvent?: (role: 'host' | 'guest', event: string) => void;
 }
 
 export interface RoomSummary {

@@ -269,7 +269,15 @@ class DuelRoom implements IDuelRoom {
   finished: boolean = false;
   createdAt: number = Date.now();
 
-  constructor(code: string, hostName: string, hostGender: string, language: string, difficulty: string, hostSession: IClientSession) {
+  // Cloud REST Relay Queues & Listeners
+  hostEvents: string[] = [];
+  guestEvents: string[] = [];
+  hostPollResolver: ((events: string[]) => void) | null = null;
+  guestPollResolver: ((events: string[]) => void) | null = null;
+  lastHostPing: number = Date.now();
+  lastGuestPing: number = Date.now();
+
+  constructor(code: string, hostName: string, hostGender: string, language: string, difficulty: string, hostSession: IClientSession | null) {
     this.code = code;
     this.hostName = hostName;
     this.hostGender = hostGender;
@@ -277,6 +285,32 @@ class DuelRoom implements IDuelRoom {
     this.difficulty = difficulty;
     this.seed = Date.now();
     this.hostSession = hostSession;
+  }
+
+  pushEvent(role: 'host' | 'guest', event: string): void {
+    if (role === 'host') {
+      if (this.hostSession) {
+        this.hostSession.send(event);
+      }
+      if (this.hostPollResolver) {
+        const resolve = this.hostPollResolver;
+        this.hostPollResolver = null;
+        resolve([event]);
+      } else {
+        this.hostEvents.push(event);
+      }
+    } else {
+      if (this.guestSession) {
+        this.guestSession.send(event);
+      }
+      if (this.guestPollResolver) {
+        const resolve = this.guestPollResolver;
+        this.guestPollResolver = null;
+        resolve([event]);
+      } else {
+        this.guestEvents.push(event);
+      }
+    }
   }
 }
 
@@ -772,8 +806,136 @@ app.get('/api/room/:code', (req: Request, res: Response) => {
     language: room.language,
     difficulty: room.difficulty,
     active: room.active,
-    waiting: !room.guestSession
+    waiting: !room.guestSession && !room.guestName
   });
+});
+
+// Join Room via REST (Cloud Relay)
+app.post('/api/room/join', (req: Request, res: Response) => {
+  const { code, guestName, guestGender } = req.body || {};
+  const cleanCode = String(code || '').trim().toUpperCase();
+  const cleanGuest = clean(guestName || 'Challenger');
+  const cleanGender = clean(guestGender || 'Boy');
+  const room = rooms.get(cleanCode);
+
+  if (!room || room.finished) {
+    res.status(404).json({ error: `Room #${cleanCode} not found or expired` });
+    return;
+  }
+  if (room.active || room.guestName) {
+    res.status(400).json({ error: `Room #${cleanCode} is already full` });
+    return;
+  }
+
+  room.guestName = cleanGuest;
+  room.guestGender = cleanGender;
+  room.active = true;
+
+  const matchStartMsg = `MATCH_START|${room.code}|${room.hostName}|${room.hostGender}|${room.guestName}|${room.guestGender}|${room.language}|${room.difficulty}|${room.seed}${room.questionsPayload ? `|${room.questionsPayload}` : ''}`;
+
+  // Notify Host
+  room.pushEvent('host', matchStartMsg);
+  // Also queue for Guest poll
+  room.pushEvent('guest', matchStartMsg);
+
+  console.log(`[Duel Start REST] Room #${room.code}: ${room.hostName} VS ${room.guestName}`);
+  res.json({
+    success: true,
+    code: room.code,
+    hostName: room.hostName,
+    hostGender: room.hostGender,
+    guestName: room.guestName,
+    guestGender: room.guestGender,
+    language: room.language,
+    difficulty: room.difficulty,
+    seed: room.seed,
+    questionsPayload: room.questionsPayload,
+    matchStartMsg
+  });
+});
+
+// Relay In-Game Action (Score updates, question answers, completion)
+app.post('/api/room/:code/action', (req: Request, res: Response) => {
+  const paramCode = req.params.code;
+  const code = (Array.isArray(paramCode) ? paramCode[0] : (paramCode || '')).trim().toUpperCase();
+  const { role, message } = req.body || {};
+  const room = rooms.get(code);
+
+  if (!room || room.finished) {
+    res.status(404).json({ error: `Room #${code} not found or expired` });
+    return;
+  }
+
+  const targetRole = role === 'host' ? 'guest' : 'host';
+  room.pushEvent(targetRole, message);
+
+  // Track match score if updating
+  if (typeof message === 'string' && message.startsWith('OPPONENT_UPDATE')) {
+    const parts = message.split('|');
+    if (parts.length >= 8) {
+      const score = parseInt(parts[6], 10) || 0;
+      if (role === 'host') room.hostScore = Math.max(room.hostScore, score);
+      else room.guestScore = Math.max(room.guestScore, score);
+    }
+  }
+
+  res.json({ success: true });
+});
+
+// Long-Poll Endpoint for In-Game Events
+app.get('/api/room/:code/poll', (req: Request, res: Response) => {
+  const paramCode = req.params.code;
+  const code = (Array.isArray(paramCode) ? paramCode[0] : (paramCode || '')).trim().toUpperCase();
+  const role = req.query.role === 'guest' ? 'guest' : 'host';
+  const room = rooms.get(code);
+
+  if (!room || room.finished) {
+    res.status(404).json({ error: `Room #${code} closed`, closed: true, events: [] });
+    return;
+  }
+
+  const queue = role === 'host' ? room.hostEvents : room.guestEvents;
+  if (role === 'host') room.lastHostPing = Date.now();
+  else room.lastGuestPing = Date.now();
+
+  // If there are already queued events, return them immediately
+  if (queue.length > 0) {
+    const events = [...queue];
+    queue.length = 0;
+    res.json({ events });
+    return;
+  }
+
+  // Long poll: hold response up to 3500ms waiting for event
+  let timer: any = null;
+  const resolver = (evts: string[]) => {
+    if (timer) clearTimeout(timer);
+    res.json({ events: evts });
+  };
+
+  if (role === 'host') room.hostPollResolver = resolver;
+  else room.guestPollResolver = resolver;
+
+  timer = setTimeout(() => {
+    if (role === 'host' && room.hostPollResolver === resolver) room.hostPollResolver = null;
+    if (role === 'guest' && room.guestPollResolver === resolver) room.guestPollResolver = null;
+    res.json({ events: [] });
+  }, 3500);
+});
+
+// Leave / Forfeit Room via REST
+app.post('/api/room/:code/leave', (req: Request, res: Response) => {
+  const paramCode = req.params.code;
+  const code = (Array.isArray(paramCode) ? paramCode[0] : (paramCode || '')).trim().toUpperCase();
+  const { role, name } = req.body || {};
+  const room = rooms.get(code);
+
+  if (room && !room.finished) {
+    room.finished = true;
+    const targetRole = role === 'host' ? 'guest' : 'host';
+    room.pushEvent(targetRole, `OPPONENT_LEFT|${clean(name || 'Opponent')}`);
+  }
+  res.json({ success: true });
 });
 
 

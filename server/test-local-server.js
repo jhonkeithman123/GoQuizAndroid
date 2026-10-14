@@ -63,6 +63,35 @@ async function runLocalServerTests() {
   const roomLookup = await res.json();
   console.log(`  ✓ GET /api/room/${roomRes.code} -> Host: ${roomLookup.hostName}, Lang: ${roomLookup.language} (${formatMs(t0)})`);
 
+  console.log('\n[TEST 5B] Joining Room & Testing Event Relay (Cloud Duel Protocol)...');
+  t0 = performance.now();
+  res = await fetch(`${HTTP_URL}/api/room/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: roomRes.code, guestName: 'GuestChallenger', guestGender: 'Girl' })
+  });
+  const joinData = await res.json();
+  console.log(`  ✓ POST /api/room/join -> ${joinData.matchStartMsg.slice(0, 45)}... (${formatMs(t0)})`);
+
+  t0 = performance.now();
+  res = await fetch(`${HTTP_URL}/api/room/${roomRes.code}/poll?role=host`);
+  const hostPoll = await res.json();
+  console.log(`  ✓ GET /poll?role=host -> Received ${hostPoll.events.length} event(s): ${hostPoll.events[0]?.slice(0, 40)}... (${formatMs(t0)})`);
+
+  t0 = performance.now();
+  res = await fetch(`${HTTP_URL}/api/room/${roomRes.code}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'host', message: 'DUEL_ACTION|LocalTester|0|true|3|3|100|1' })
+  });
+  const actRes = await res.json();
+  console.log(`  ✓ POST /action -> success: ${actRes.success} (${formatMs(t0)})`);
+
+  t0 = performance.now();
+  res = await fetch(`${HTTP_URL}/api/room/${roomRes.code}/poll?role=guest`);
+  const guestPoll = await res.json();
+  console.log(`  ✓ GET /poll?role=guest -> Received ${guestPoll.events.length} event(s): ${guestPoll.events[0]} (${formatMs(t0)})`);
+
   console.log('\n[TEST 6/8] Submitting & Fetching Leaderboard...');
   t0 = performance.now();
   res = await fetch(`${HTTP_URL}/api/score`, {

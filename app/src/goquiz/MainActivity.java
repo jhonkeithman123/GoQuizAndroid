@@ -5828,6 +5828,17 @@ public class MainActivity extends Activity {
         return s == null ? "" : s.replace("|", " ").replace("\n", " ").replace("\r", " ").trim();
     }
 
+    static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\b", "\\b")
+                .replace("\f", "\\f")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
+
     Bitmap loadAvatarBitmap(String gender, int targetSize) {
         String folder = ("Girl".equalsIgnoreCase(gender) || "Female".equalsIgnoreCase(gender)) ? "Girl" : "Boy";
         try (InputStream is = getAssets().open("images/" + folder + "/" + folder + ".jpg")) {
@@ -5960,6 +5971,11 @@ public class MainActivity extends Activity {
         TextView waitingCodeView;
         LinearLayout openRoomsListView;
 
+        boolean isCloud = false;
+        String cloudBaseUrl = "";
+        String cloudRole = "guest";
+        Thread cloudPollThread = null;
+
         DuelClient(String host, int port) throws IOException {
             this.myName = studentName.isEmpty() ? "Player" : studentName;
             this.myGender = getActiveCharacterGenderFolder();
@@ -5986,7 +6002,86 @@ public class MainActivity extends Activity {
             send("INFO");
         }
 
+        // Cloud REST Relay Constructor
+        DuelClient(String cloudBaseUrl, String roomCode, String cloudRole) {
+            this.isCloud = true;
+            this.myName = studentName.isEmpty() ? "Player" : studentName;
+            this.myGender = getActiveCharacterGenderFolder();
+            this.cloudBaseUrl = cloudBaseUrl.endsWith("/") ? cloudBaseUrl.substring(0, cloudBaseUrl.length() - 1) : cloudBaseUrl;
+            this.code = roomCode;
+            this.cloudRole = cloudRole;
+
+            isLiveDuelConnected = true;
+            runOnUiThread(() -> {
+                if (activeLiveDuelBadge != null) activeLiveDuelBadge.update("🌐 Cloud Gateway • Room #" + roomCode, Color.rgb(130, 205, 255));
+            });
+
+            cloudPollThread = new Thread(() -> {
+                android.util.Log.d("GoQuizDuel", "[CloudRelay] Started event poll for #" + roomCode + " (" + cloudRole + ")");
+                while (!closed) {
+                    try {
+                        String ep = this.cloudBaseUrl + "/api/room/" + this.code + "/poll?role=" + this.cloudRole;
+                        java.net.URL u = new java.net.URL(ep);
+                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn.setConnectTimeout(6000);
+                        conn.setReadTimeout(6000);
+                        if (conn.getResponseCode() == 200) {
+                            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                            StringBuilder sb = new StringBuilder();
+                            String line;
+                            while ((line = r.readLine()) != null) sb.append(line);
+                            r.close();
+                            String json = sb.toString();
+                            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"events\"\\s*:\\s*\\[(.*?)\\]").matcher(json);
+                            if (m.find()) {
+                                String rawArray = m.group(1);
+                                if (!rawArray.trim().isEmpty()) {
+                                    java.util.regex.Matcher itemMatcher = java.util.regex.Pattern.compile("\"((?:\\\\\"|[^\"])*)\"").matcher(rawArray);
+                                    while (itemMatcher.find()) {
+                                        String event = itemMatcher.group(1).replace("\\\"", "\"").replace("\\\\", "\\");
+                                        android.util.Log.d("GoQuizDuel", "[CloudRelay] Poll RX: " + event);
+                                        handleDuelMessage(event);
+                                    }
+                                }
+                            }
+                        } else if (conn.getResponseCode() == 404) {
+                            break;
+                        }
+                    } catch (Exception ex) {
+                        try { Thread.sleep(400); } catch (Exception ignored) {}
+                    }
+                }
+                android.util.Log.d("GoQuizDuel", "[CloudRelay] Poll thread stopped for #" + roomCode);
+            }, "QuizAndroidCloudPoll");
+            cloudPollThread.setDaemon(true);
+            cloudPollThread.start();
+        }
+
         synchronized void send(String msg) {
+            if (isCloud) {
+                backgroundExecutor.submit(() -> {
+                    try {
+                        String ep = cloudBaseUrl + "/api/room/" + code + "/action";
+                        java.net.URL u = new java.net.URL(ep);
+                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn.setRequestMethod("POST");
+                        conn.setConnectTimeout(4000);
+                        conn.setReadTimeout(4000);
+                        conn.setDoOutput(true);
+                        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                        String payload = String.format("{\"role\":\"%s\",\"message\":\"%s\"}",
+                                escapeJson(cloudRole),
+                                escapeJson(msg));
+                        try (java.io.OutputStream os = conn.getOutputStream()) {
+                            os.write(payload.getBytes(StandardCharsets.UTF_8));
+                        }
+                        conn.getResponseCode();
+                    } catch (Exception ex) {
+                        android.util.Log.w("GoQuizDuel", "[CloudRelay] Action send error: " + ex.getMessage());
+                    }
+                });
+                return;
+            }
             backgroundExecutor.submit(() -> {
                 try {
                     if (out != null) {
@@ -6005,6 +6100,28 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 if (activeLiveDuelBadge != null) activeLiveDuelBadge.update(null, null);
             });
+            if (isCloud) {
+                backgroundExecutor.submit(() -> {
+                    try {
+                        String ep = cloudBaseUrl + "/api/room/" + code + "/leave";
+                        java.net.URL u = new java.net.URL(ep);
+                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn.setRequestMethod("POST");
+                        conn.setConnectTimeout(3000);
+                        conn.setReadTimeout(3000);
+                        conn.setDoOutput(true);
+                        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                        String payload = String.format("{\"role\":\"%s\",\"name\":\"%s\"}",
+                                escapeJson(cloudRole),
+                                escapeJson(myName));
+                        try (java.io.OutputStream os = conn.getOutputStream()) {
+                            os.write(payload.getBytes(StandardCharsets.UTF_8));
+                        }
+                        conn.getResponseCode();
+                    } catch (Exception ignored) {}
+                });
+                return;
+            }
             backgroundExecutor.submit(() -> {
                 try {
                     if (socket != null && !socket.isClosed()) {
@@ -6895,9 +7012,7 @@ public class MainActivity extends Activity {
                         setButtonFantasyStyle(joinB, Color.rgb(20, 65, 95), Color.rgb(120, 200, 255));
                         joinB.setOnClickListener(v -> {
                             codeInput.setText(rCode);
-                            Toast.makeText(this, "Selected Global Room #" + rCode, Toast.LENGTH_SHORT).show();
-                            statusView.setText("● Selected Global Room #" + rCode + " • Tap JOIN ➔ to connect");
-                            statusView.setTextColor(Color.rgb(130, 205, 255));
+                            joinRoomBtn.performClick();
                         });
                         row.addView(joinB);
                         gCard.addView(row);
@@ -7123,7 +7238,11 @@ public class MainActivity extends Activity {
                     if (baseUrl == null || baseUrl.trim().isEmpty()) baseUrl = "https://goquizandroid.onrender.com";
                     baseUrl = baseUrl.trim();
                     if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
+                    final String fBaseUrl = baseUrl;
                     String ep = baseUrl.endsWith("/") ? baseUrl + "api/room/create" : baseUrl + "/api/room/create";
+
+                    ArrayList<Question> qs = loadDeterministicDuelQuestions(sLang, sDiff, System.currentTimeMillis());
+                    String qPayload = serializeDuelQuestions(qs);
 
                     String gCode = null;
                     try {
@@ -7134,11 +7253,12 @@ public class MainActivity extends Activity {
                         conn.setReadTimeout(5000);
                         conn.setDoOutput(true);
                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                        String payload = String.format("{\"hostName\":\"%s\",\"hostGender\":\"%s\",\"language\":\"%s\",\"difficulty\":\"%s\"}",
-                                sanitizeNetworkString(studentName.isEmpty() ? "Adventurer" : studentName),
-                                sanitizeNetworkString(getActiveCharacterGenderFolder()),
-                                sanitizeNetworkString(sLang),
-                                sanitizeNetworkString(sDiff));
+                        String payload = String.format("{\"hostName\":\"%s\",\"hostGender\":\"%s\",\"language\":\"%s\",\"difficulty\":\"%s\",\"questionsPayload\":\"%s\"}",
+                                escapeJson(studentName.isEmpty() ? "Adventurer" : studentName),
+                                escapeJson(getActiveCharacterGenderFolder()),
+                                escapeJson(sLang),
+                                escapeJson(sDiff),
+                                escapeJson(qPayload));
                         try (java.io.OutputStream os = conn.getOutputStream()) {
                             os.write(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                         }
@@ -7155,12 +7275,26 @@ public class MainActivity extends Activity {
 
                     final String finalCode = gCode != null ? gCode : "G" + (100 + (int)(Math.random() * 899));
                     runOnUiThread(() -> {
+                        if (activeDuelClient != null) {
+                            activeDuelClient.close();
+                            activeDuelClient = null;
+                        }
+                        activeDuelClient = new DuelClient(fBaseUrl, finalCode, "host");
+                        activeDuelClient.duelQuestions = qs;
+                        activeDuelClient.duelLang = sLang;
+                        activeDuelClient.duelDiff = sDiff;
+                        activeDuelClient.lobbyStatusView = statusView;
+                        activeDuelClient.waitingCardView = waitingCard;
+                        activeDuelClient.waitingCodeView = waitingCodeView;
+                        activeDuelClient.openRoomsListView = roomsList;
+
                         waitingCodeView.setText("ROOM CODE: " + finalCode);
                         waitingHint.setText("🌐 GLOBAL CLOUD ROOM • Share this 4-letter code with your opponent worldwide!");
                         waitingCard.setVisibility(View.VISIBLE);
-                        statusView.setText("★ [GLOBAL HOST ACTIVE] • Room #" + finalCode + " published to Cloud Gateway");
+                        statusView.setText("★ [GLOBAL HOST ACTIVE] • Room #" + finalCode + " published to Cloud Gateway — Waiting for challenger...");
                         statusView.setTextColor(Color.rgb(130, 205, 255));
                         Toast.makeText(this, "Global Duel Room #" + finalCode + " Created!", Toast.LENGTH_SHORT).show();
+                        showFantasyAlertDialog("GLOBAL ROOM CREATED", "Global Duel Room #" + finalCode + " is ready!\nShare this 4-letter code with your opponent worldwide.\n\nThe duel will start automatically once your challenger joins!");
                         refreshAllDuelRoomsAction.run();
                     });
                 });
@@ -7182,7 +7316,7 @@ public class MainActivity extends Activity {
                             statusView.setTextColor(GOLD_LIGHT);
                         }
                     }
-                    if (activeDuelClient != null && (activeDuelClient.closed || (activeDuelClient.socket != null && !activeDuelClient.socket.getInetAddress().getHostAddress().equals("127.0.0.1")))) {
+                    if (activeDuelClient != null && (activeDuelClient.closed || activeDuelClient.isCloud || (activeDuelClient.socket != null && !activeDuelClient.socket.getInetAddress().getHostAddress().equals("127.0.0.1")))) {
                         activeDuelClient.close();
                         activeDuelClient = null;
                     }
@@ -7212,30 +7346,83 @@ public class MainActivity extends Activity {
             // If alphanumeric with letters, check Global Cloud
             boolean hasLetters = code.matches(".*[a-zA-Z].*");
             if (hasLetters) {
-                statusView.setText("● Checking Global Cloud Room #" + code.toUpperCase() + "...");
+                statusView.setText("● Joining Global Cloud Room #" + code.toUpperCase() + "...");
                 statusView.setTextColor(Color.rgb(130, 205, 255));
                 backgroundExecutor.submit(() -> {
+                    long startMs = System.currentTimeMillis();
                     String baseUrl = prefs.getString("cloudServerUrl", "https://goquizandroid.onrender.com");
                     if (baseUrl == null || baseUrl.trim().isEmpty()) baseUrl = "https://goquizandroid.onrender.com";
                     baseUrl = baseUrl.trim();
                     if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) baseUrl = "https://" + baseUrl;
-                    String ep = (baseUrl.endsWith("/") ? baseUrl + "api/room/" : baseUrl + "/api/room/") + code.trim().toUpperCase();
+                    final String fBaseUrl = baseUrl;
+                    String ep = baseUrl.endsWith("/") ? baseUrl + "api/room/join" : baseUrl + "/api/room/join";
+                    android.util.Log.d("GoQuizDuel", "[CloudJoin] Joining room #" + code.toUpperCase() + " on: " + ep);
                     try {
                         java.net.URL u = new java.net.URL(ep);
                         java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
-                        conn.setConnectTimeout(4500);
-                        conn.setReadTimeout(4500);
-                        if (conn.getResponseCode() == 200) {
+                        conn.setRequestMethod("POST");
+                        conn.setConnectTimeout(6000);
+                        conn.setReadTimeout(6000);
+                        conn.setDoOutput(true);
+                        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                        String payload = String.format("{\"code\":\"%s\",\"guestName\":\"%s\",\"guestGender\":\"%s\"}",
+                                escapeJson(code.toUpperCase()),
+                                escapeJson(studentName.isEmpty() ? "Adventurer" : studentName),
+                                escapeJson(getActiveCharacterGenderFolder()));
+                        try (java.io.OutputStream os = conn.getOutputStream()) {
+                            os.write(payload.getBytes(StandardCharsets.UTF_8));
+                        }
+                        int rc = conn.getResponseCode();
+                        long elapsed = System.currentTimeMillis() - startMs;
+                        android.util.Log.d("GoQuizDuel", "[CloudJoin] Room join HTTP " + rc + " (" + elapsed + "ms)");
+                        if (rc == 200) {
+                            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                            StringBuilder sb = new StringBuilder();
+                            String line;
+                            while ((line = reader.readLine()) != null) sb.append(line);
+                            reader.close();
+                            String respJson = sb.toString();
+                            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"matchStartMsg\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"").matcher(respJson);
+                            String matchStartMsg = null;
+                            if (m.find()) {
+                                matchStartMsg = m.group(1).replace("\\\"", "\"").replace("\\\\", "\\");
+                            }
+
+                            final String fMsg = matchStartMsg;
                             runOnUiThread(() -> {
-                                Toast.makeText(this, "Connected to Global Room #" + code.toUpperCase() + "!", Toast.LENGTH_SHORT).show();
-                                showFantasyAlertDialog("GLOBAL ROOM FOUND", "Room #" + code.toUpperCase() + " is active on the Cloud Gateway!\nConnecting player to match...");
-                                statusView.setText("★ Linked to Global Room #" + code.toUpperCase());
+                                statusView.setText("★ Connected to Global Room #" + code.toUpperCase() + "! Launching duel...");
                                 statusView.setTextColor(Color.rgb(90, 220, 120));
+                                if (activeDuelClient != null) {
+                                    activeDuelClient.close();
+                                    activeDuelClient = null;
+                                }
+                                activeDuelClient = new DuelClient(fBaseUrl, code.toUpperCase(), "guest");
+                                activeDuelClient.lobbyStatusView = statusView;
+                                activeDuelClient.waitingCardView = waitingCard;
+                                activeDuelClient.waitingCodeView = waitingCodeView;
+                                activeDuelClient.openRoomsListView = roomsList;
+                                if (fMsg != null && !fMsg.isEmpty()) {
+                                    activeDuelClient.handleDuelMessage(fMsg);
+                                }
                             });
                             return;
+                        } else {
+                            java.io.BufferedReader errR = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getErrorStream(), StandardCharsets.UTF_8));
+                            StringBuilder errSb = new StringBuilder();
+                            String l;
+                            while ((l = errR.readLine()) != null) errSb.append(l);
+                            errR.close();
+                            String errJson = errSb.toString();
+                            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"error\"\\s*:\\s*\"([^\"]+)\"").matcher(errJson);
+                            String errMsg = m.find() ? m.group(1) : ("Room #" + code.toUpperCase() + " not found or full.");
+                            runOnUiThread(() -> showFantasyAlertDialog("CANNOT JOIN ROOM", errMsg));
+                            return;
                         }
-                    } catch (Exception ignored) {}
-                    runOnUiThread(() -> Toast.makeText(this, "Global room #" + code.toUpperCase() + " not found or expired.", Toast.LENGTH_SHORT).show());
+                    } catch (Exception ex) {
+                        long elapsed = System.currentTimeMillis() - startMs;
+                        android.util.Log.w("GoQuizDuel", "[CloudJoin] Room join failed in " + elapsed + "ms: " + ex.getMessage());
+                    }
+                    runOnUiThread(() -> showFantasyAlertDialog("CONNECTION ERROR", "Could not connect to Global Room #" + code.toUpperCase() + ".\nPlease verify the code or check your internet connection."));
                 });
             } else {
                 withConnectedClient.accept(false, () -> {

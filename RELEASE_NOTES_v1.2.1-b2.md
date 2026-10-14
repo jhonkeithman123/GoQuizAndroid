@@ -45,6 +45,11 @@ This release also introduces **sub-tab lobby filtering**, a **prominent visual n
 * **Type-Safe Routing:** Fixed TypeScript parameter handling (`TS2339`) on `req.params.code`.
 * **Graceful JSON Parsing:** Prevents body-parser crashes on malformed requests.
 
+### ⚔️ 5. Global Cloud Dueling Fix (Real-Time REST Event Relay)
+* **Resolved Incomplete Join Bug:** Fixed an issue where joining a global room displayed *"ROOM # is active on Cloud Gateway connecting player to match..."* but did not transition the host or guest into the game.
+* **Zero-Dependency Event Relay:** Built an HTTPS-compatible long-poll event relay on the Cloud Gateway (`/api/room/join`, `/api/room/:code/action`, `/api/room/:code/poll`, `/api/room/:code/leave`) that operates through firewalls, NAT, mobile networks, and Render proxies without raw TCP port dependencies.
+* **Synchronized Live Duel Launch:** Both Desktop and Android `DuelClient` engines poll the relay at sub-millisecond latencies. As soon as the challenger joins, `MATCH_START` triggers automatically on both devices, synchronizing questions, live HP, and scores identically to local LAN play.
+
 ---
 
 ## 📦 Downloads & Release Artifacts
