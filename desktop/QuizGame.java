@@ -374,13 +374,14 @@ public class QuizGame extends JFrame {
         // If another QuizServer is already running on port 5050, this simply leaves it alone.
         startEmbeddedLeaderboardServer();
 
-        // Keybindings for In-App SQLite Database Inspector (F12 or Ctrl+Shift+D)
-        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), "openDbInspector");
-        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK), "openDbInspector");
-        getRootPane().getActionMap().put("openDbInspector", new AbstractAction() {
+        // Secret Keybinding for In-App SQLite Database Inspector (Ctrl + Shift + ~ / Squirgle)
+        KeyStroke squirgleStroke = KeyStroke.getKeyStroke(KeyEvent.VK_BACK_QUOTE, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
+        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(squirgleStroke, "openSecretDbPrompt");
+        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_DEAD_TILDE, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK), "openSecretDbPrompt");
+        getRootPane().getActionMap().put("openSecretDbPrompt", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                showDatabaseInspector();
+                showSecretPasswordPrompt();
             }
         });
 
@@ -5858,9 +5859,8 @@ public class QuizGame extends JFrame {
 
         JButton login=createFantasyButton("LOGIN");
         JButton register=createFantasyButton("REGISTER ACCOUNT");
-        JButton dbInspector=createFantasyButton("🛠️ DB INSPECTOR");
-        login.setAlignmentX(Component.CENTER_ALIGNMENT); register.setAlignmentX(Component.CENTER_ALIGNMENT); dbInspector.setAlignmentX(Component.CENTER_ALIGNMENT);
-        login.setPreferredSize(new Dimension(350,58)); register.setPreferredSize(new Dimension(350,52)); dbInspector.setPreferredSize(new Dimension(350,46));
+        login.setAlignmentX(Component.CENTER_ALIGNMENT); register.setAlignmentX(Component.CENTER_ALIGNMENT);
+        login.setPreferredSize(new Dimension(350,58)); register.setPreferredSize(new Dimension(350,52));
 
         login.addActionListener(e->{
             String nStr = name.getText().trim();
@@ -5876,7 +5876,6 @@ public class QuizGame extends JFrame {
             }
         });
         register.addActionListener(e->showRegistration());
-        dbInspector.addActionListener(e->showDatabaseInspector());
 
         card.add(gameTitle);
         card.add(Box.createVerticalStrut(8));
@@ -5891,8 +5890,6 @@ public class QuizGame extends JFrame {
         card.add(login);
         card.add(Box.createVerticalStrut(10));
         card.add(register);
-        card.add(Box.createVerticalStrut(10));
-        card.add(dbInspector);
 
         panel.add(card);
         changeScreen(panel);
@@ -5917,6 +5914,51 @@ public class QuizGame extends JFrame {
         back.addActionListener(e->showLogin());
         card.add(title);card.add(Box.createVerticalStrut(15));for(int i=0;i<fields.length;i++){JLabel l=new JLabel(labels[i]);l.setForeground(TEXT);l.setAlignmentX(Component.CENTER_ALIGNMENT);card.add(l);card.add(fields[i]);card.add(Box.createVerticalStrut(7));}card.add(create);card.add(Box.createVerticalStrut(8));card.add(back);panel.add(card);changeScreen(panel);
     }
+
+    // ==========================================
+    // SECRET DATABASE PASSWORD PROMPT (Desktop)
+    // ==========================================
+    private void showSecretPasswordPrompt() {
+        JPasswordField passwordField = new JPasswordField(16);
+        passwordField.setFont(pixelFont(Font.PLAIN, 15));
+        passwordField.setBackground(new Color(15, 23, 42));
+        passwordField.setForeground(Color.WHITE);
+        passwordField.setCaretColor(GOLD_LIGHT);
+        passwordField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(GOLD_LIGHT, 1),
+                BorderFactory.createEmptyBorder(6, 10, 6, 10)
+        ));
+
+        JPanel panel = new JPanel(new GridLayout(2, 1, 6, 8));
+        panel.setOpaque(false);
+        JLabel label = new JLabel("Enter Developer Authorization Key:");
+        label.setFont(pixelFont(Font.BOLD, 13));
+        panel.add(label);
+        panel.add(passwordField);
+
+        int result = JOptionPane.showConfirmDialog(
+                this,
+                panel,
+                "🔐 Developer Security Authentication",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (result == JOptionPane.OK_OPTION) {
+            String entered = new String(passwordField.getPassword()).trim();
+            if ("GQA-12345".equals(entered)) {
+                showDatabaseInspector();
+            } else {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Access Denied: Invalid Security Key.",
+                        "Authentication Failed",
+                        JOptionPane.ERROR_MESSAGE
+                );
+            }
+        }
+    }
+
     // ==========================================
     // IN-APP SQLITE DATABASE INSPECTOR (Desktop)
     // ==========================================
@@ -7644,15 +7686,6 @@ public class QuizGame extends JFrame {
             for (BackgroundPanel p : activeDesktopPanels) p.repaint();
         });
 
-        JButton dbInspector =
-                createFantasyButton(
-                        "🛠️ SQLITE DATABASE INSPECTOR"
-                );
-
-        dbInspector.addActionListener(
-                e -> showDatabaseInspector()
-        );
-
         JButton reset =
                 createFantasyButton(
                         "RESET ALL BADGES"
@@ -7782,14 +7815,6 @@ public class QuizGame extends JFrame {
         );
 
         card.add(cameraButton);
-
-        card.add(
-                Box.createVerticalStrut(
-                        14
-                )
-        );
-
-        card.add(dbInspector);
 
         card.add(
                 Box.createVerticalStrut(
