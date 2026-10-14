@@ -53,7 +53,7 @@ android {
 
 tasks.register('apkDebug') {
     group = 'build'
-    description = 'Builds Debug APK and copies to dist folder'
+    description = 'Builds Debug APK and copies to dist/v<version> folder'
     dependsOn 'assembleDebug'
     doLast {
         def verName = android.defaultConfig.versionName
@@ -64,24 +64,18 @@ tasks.register('apkDebug') {
                 if (json.versionName) verName = json.versionName
             } catch (Exception ignored) {}
         }
-        def distDest = file("${rootDir}/dist")
+        def distDest = file("${rootDir}/dist/v${verName}")
         distDest.mkdirs()
         def src = file("${layout.buildDirectory.get().asFile}/outputs/apk/debug/app-debug.apk")
         if (src.exists()) {
             copy {
                 from src
                 into distDest
-                rename { "app-debug.apk" }
-            }
-            copy {
-                from src
-                into distDest
                 rename { "GoQuiz-v${verName}-debug.apk" }
             }
             println "\n========================================================"
-            println " [SUCCESS] Android Debug APK is ready in dist!"
-            println " - dist/app-debug.apk"
-            println " - dist/GoQuiz-v${verName}-debug.apk"
+            println " [SUCCESS] Android Debug APK is ready in dist/v${verName}!"
+            println " - dist/v${verName}/GoQuiz-v${verName}-debug.apk"
             println "========================================================\n"
         }
     }
@@ -89,7 +83,7 @@ tasks.register('apkDebug') {
 
 tasks.register('apkRelease') {
     group = 'build'
-    description = 'Builds Release APK and copies to dist folder with version suffix'
+    description = 'Builds Release APK and copies to dist/v<version> folder'
     dependsOn 'assembleRelease'
     doLast {
         def verName = android.defaultConfig.versionName
@@ -100,7 +94,7 @@ tasks.register('apkRelease') {
                 if (json.versionName) verName = json.versionName
             } catch (Exception ignored) {}
         }
-        def distDest = file("${rootDir}/dist")
+        def distDest = file("${rootDir}/dist/v${verName}")
         distDest.mkdirs()
         def src = file("${layout.buildDirectory.get().asFile}/outputs/apk/release/app-release.apk")
         if (src.exists()) {
@@ -109,11 +103,9 @@ tasks.register('apkRelease') {
                 into distDest
                 rename { "GoQuiz-v${verName}.apk" }
             }
-            def oldRelease = file("${distDest}/app-release.apk")
-            if (oldRelease.exists()) oldRelease.delete()
             println "\n========================================================"
-            println " [SUCCESS] Android Release APK is ready in dist!"
-            println " - dist/GoQuiz-v${verName}.apk"
+            println " [SUCCESS] Android Release APK is ready in dist/v${verName}!"
+            println " - dist/v${verName}/GoQuiz-v${verName}.apk"
             println "========================================================\n"
         }
     }

@@ -41,8 +41,7 @@ echo.
 echo ========================================================
 echo  Release APK generation finished!
 echo  Saved to:
-echo    - dist\GoQuiz-v!VER_NAME!.apk
-echo    - dist\app-release.apk
+echo    - dist\v!VER_NAME!\GoQuiz-v!VER_NAME!.apk
 echo ========================================================
 goto finish
 

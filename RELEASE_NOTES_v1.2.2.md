@@ -37,7 +37,9 @@ This release also establishes **seamless UI consistency** between Android and De
 
 ## 📦 Distribution Packages
 
-* **Android Package:** `dist/GoQuiz-v1.2.2.apk` (and `dist/app-release.apk`)
-* **Desktop Portable Bundle:** `dist/GoQuiz-v1.2.2-Windows.zip` (Zero-dependency portable bundle with embedded Java 17 runtime)
-* **Desktop Standalone Executable:** `dist/GoQuiz-v1.2.2.exe`
-* **Cross-Platform JAR:** `dist/GoQuiz-v1.2.2.jar`
+All build artifacts for this release are organized under `dist/v1.2.2/`:
+
+* **Android Package:** `dist/v1.2.2/GoQuiz-v1.2.2.apk`
+* **Desktop Portable Bundle:** `dist/v1.2.2/GoQuiz-v1.2.2-Windows.zip` (Zero-dependency portable bundle with embedded Java 17 runtime)
+* **Desktop Standalone Executable:** `dist/v1.2.2/GoQuiz-v1.2.2.exe`
+* **Cross-Platform JAR:** `dist/v1.2.2/GoQuiz-v1.2.2.jar`

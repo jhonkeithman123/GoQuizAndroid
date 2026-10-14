@@ -44,13 +44,13 @@ echo   [SUCCESS] DISTRIBUTION PACKAGES READY (v!VER_NAME!)
 echo ========================================================
 echo.
 echo  Mobile Android:
-echo    - dist\GoQuiz-v!VER_NAME!.apk
+echo    - dist\v!VER_NAME!\GoQuiz-v!VER_NAME!.apk
 echo.
 echo  Desktop Windows:
-echo    - dist\GoQuiz-v!VER_NAME!.exe (Self-contained launcher)
-echo    - dist\GoQuiz-v!VER_NAME!-Windows.zip (Compressed bundle)
-echo    - dist\GoQuiz-v!VER_NAME!.jar
+echo    - dist\v!VER_NAME!\GoQuiz-v!VER_NAME!.exe (Self-contained launcher)
+echo    - dist\v!VER_NAME!\GoQuiz-v!VER_NAME!-Windows.zip (Compressed bundle)
+echo    - dist\v!VER_NAME!\GoQuiz-v!VER_NAME!.jar
 echo.
 echo ========================================================
-explorer "%~dp0..\dist"
+explorer "%~dp0..\dist\v!VER_NAME!"
 pause
