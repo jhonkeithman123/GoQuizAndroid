@@ -2,6 +2,14 @@
 
 All notable changes to the **GoQuiz Adventure** project are documented here. This changelog is dynamically embedded into both the Android and Desktop builds.
 
+## [1.3.1] - 2026-10-15
+### Fixed
+- **Admin Security Access Re-trigger Loop**: Fixed an issue where the admin password prompt would repeatedly re-open upon dismissal.
+- **Haptic Vibration Feedback Isolation**: Suppressed shake sensor triggers while the device vibration motor is pulsing to eliminate false positive loops.
+- **Volume ContentObserver Filtering**: Restricted system settings observer to only process genuine audio stream volume changes.
+- **Gesture Combo Disarming & Cooldown**: Automatically disarms the volume combo once consumed or dismissed and adds a 2.5-second re-trigger cooldown.
+- **Desktop Prompt Concurrency Guard**: Guarded Desktop Swing secret prompt against rapid keybinding re-triggers.
+
 ## [1.3.0] - 2026-10-14
 ### Added
 - **Secret Developer Database Inspector**: Mobile-scale SQLite database browser to inspect tables, view column schemas, browse rows, and run custom SQL queries in-app.

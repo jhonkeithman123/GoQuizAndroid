@@ -1,13 +1,13 @@
-# 🎮 GoQuiz Adventure v1.3.0 — Release Notes
+# 🎮 GoQuiz Adventure v1.3.1 — Release Notes
 
-> **Tag:** `v1.3.0` (Stable) / `v1.3.0-b1` (Beta) • **Build:** `8` • **Release Date:** October 2026  
+> **Tag:** `v1.3.1` (Stable) / `v1.3.1-b1` (Beta) • **Build:** `9` • **Release Date:** October 2026  
 > **Platforms:** Android (Mobile/Tablet) & Windows (Desktop/PC)
 
 ---
 
 ## 🌟 Overview
 
-**GoQuiz Adventure v1.3.0** is a major feature update introducing the **Secret Developer Database Inspector** on mobile and desktop, guarded by a dedicated **hardware physical gesture combo** and master authorization key.
+**GoQuiz Adventure v1.3.1** is a targeted stability update resolving unintended admin security access re-triggers and polishing the physical hardware gesture combo across mobile and desktop.
 
 This update equips developers, educators, and administrators with the ability to inspect database tables, schemas, student accounts, and test custom SQL queries directly on-device without needing external SQLite desktop tools, all while keeping the interface completely hidden from normal gameplay.
 
