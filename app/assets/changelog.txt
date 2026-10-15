@@ -1,3 +1,10 @@
+[v1.3.1-b1] - Admin Security Access Stability & Gesture Polish
+• Resolved Security Access Re-trigger Loop: Fixed issue where the admin password prompt kept re-appearing immediately after being dismissed.
+• Tactile Haptic Isolation: Suppressed physical shake sensor triggers during hardware vibration motor pulses.
+• Tuned Sensor Threshold: Calibrated shake spike detection to intentional wrist gestures (1.85G / delta 7.5 m/s²), avoiding false triggers.
+• System Settings Event Filtering: Filtered out non-volume system setting events from ContentObserver.
+• Multi-Channel Rocker Polish: Smooth volume up and down combo tracking with 3.5s rocking window and automatic disarm upon consumption.
+
 [v1.3.0-b1] - Secret Database Inspector & Physical Combo Trigger
 • Added Secret Database Inspector: mobile-scale SQLite database browser to inspect tables, view column schemas, browse rows, and run custom SQL queries.
 • Added Secret Combo Trigger: Volume Up + Volume Down combo arming with tactile haptic ticks and double-vibration pulse + Shake detection.
