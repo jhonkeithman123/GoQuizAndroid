@@ -992,7 +992,26 @@ public class MainActivity extends Activity {
     private int secretTapCount = 0;
     private long lastSecretTapTime = 0;
 
+    // Security dialog lifecycle & vibration suppression
+    private Dialog activeSecurityDialog = null;
+    private long lastSecurityDismissTime = 0;
+    private long lastVibrateEndTime = 0;
+
+    private void resetSecretComboState() {
+        isVolumeComboArmed = false;
+        volumeComboArmedExpiry = 0;
+        lastVolumeUpTime = 0;
+        lastVolumeDownTime = 0;
+        isVolumeUpPressed = false;
+        isVolumeDownPressed = false;
+        secretTapCount = 0;
+        lastShakeX = 0;
+        lastShakeY = 0;
+        lastShakeZ = 0;
+    }
+
     private void vibrateTick(long durationMs) {
+        lastVibrateEndTime = SystemClock.uptimeMillis() + durationMs;
         try {
             Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
             if (v != null && v.hasVibrator()) {
@@ -1006,8 +1025,14 @@ public class MainActivity extends Activity {
     }
 
     private void checkVolumeComboArmed(long now) {
+        if (activeSecurityDialog != null && activeSecurityDialog.isShowing()) return;
+        if (now - lastSecurityDismissTime < 2500) return;
+
         boolean bothPressed = isVolumeUpPressed && isVolumeDownPressed;
-        boolean bothRockedRecently = (now - lastVolumeUpTime < 4000) && (now - lastVolumeDownTime < 4000);
+        boolean bothRockedRecently = (lastVolumeUpTime > 0 && lastVolumeDownTime > 0)
+                && (now - lastVolumeUpTime < 3500)
+                && (now - lastVolumeDownTime < 3500);
+
         if (bothPressed || bothRockedRecently) {
             isVolumeComboArmed = true;
             volumeComboArmedExpiry = now + 4000;
@@ -1035,17 +1060,12 @@ public class MainActivity extends Activity {
                         if (a != null) {
                             int curVol = a.getStreamVolume(AudioManager.STREAM_MUSIC);
                             long now = SystemClock.uptimeMillis();
-                            if (lastObservedStreamVolume >= 0) {
+                            // ONLY process if stream volume actually changed (ignore unrelated system settings changes)
+                            if (lastObservedStreamVolume >= 0 && curVol != lastObservedStreamVolume) {
                                 if (curVol > lastObservedStreamVolume) {
-                                    isVolumeUpPressed = true;
                                     lastVolumeUpTime = now;
-                                    vibrateTick(20);
-                                } else if (curVol < lastObservedStreamVolume) {
-                                    isVolumeDownPressed = true;
-                                    lastVolumeDownTime = now;
                                     vibrateTick(20);
                                 } else {
-                                    lastVolumeUpTime = now;
                                     lastVolumeDownTime = now;
                                     vibrateTick(20);
                                 }
@@ -1126,16 +1146,33 @@ public class MainActivity extends Activity {
                         @Override
                         public void onSensorChanged(SensorEvent event) {
                             if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER) return;
+                            if (activeSecurityDialog != null && activeSecurityDialog.isShowing()) return;
+
+                            long now = SystemClock.uptimeMillis();
+                            if (now - lastSecurityDismissTime < 2500) return;
+                            if (now < lastVibrateEndTime + 250) return; // Prevent physical motor vibration from triggering shake
+
+                            // MUST have combo actively armed
+                            boolean isComboActive = (isVolumeComboArmed && now < volumeComboArmedExpiry)
+                                    || (isVolumeUpPressed && isVolumeDownPressed && (now - lastVolumeUpTime < 1500) && (now - lastVolumeDownTime < 1500));
+                            if (!isComboActive) return;
+
                             float x = event.values[0];
                             float y = event.values[1];
                             float z = event.values[2];
-                            long now = SystemClock.uptimeMillis();
 
                             // Proper Euclidean G-force
                             float gX = x / SensorManager.GRAVITY_EARTH;
                             float gY = y / SensorManager.GRAVITY_EARTH;
                             float gZ = z / SensorManager.GRAVITY_EARTH;
                             float gForce = (float) Math.sqrt(gX * gX + gY * gY + gZ * gZ);
+
+                            if (lastShakeX == 0 && lastShakeY == 0 && lastShakeZ == 0) {
+                                lastShakeX = x;
+                                lastShakeY = y;
+                                lastShakeZ = z;
+                                return;
+                            }
 
                             float deltaX = Math.abs(x - lastShakeX);
                             float deltaY = Math.abs(y - lastShakeY);
@@ -1144,16 +1181,11 @@ public class MainActivity extends Activity {
                             lastShakeY = y;
                             lastShakeZ = z;
 
-                            // Responsive physical shake threshold
-                            boolean isShakeSpike = (gForce > 1.45f) || (deltaX > 5.0f || deltaY > 5.0f || deltaZ > 5.0f);
+                            // Intentional physical wrist shake threshold
+                            boolean isShakeSpike = (gForce > 1.85f) || (deltaX > 7.5f || deltaY > 7.5f || deltaZ > 7.5f);
 
-                            // MUST have Volume Up and Down engaged/armed or held
-                            boolean isComboActive = (isVolumeUpPressed && isVolumeDownPressed)
-                                    || (isVolumeComboArmed && now < volumeComboArmedExpiry)
-                                    || ((now - lastVolumeUpTime < 4000) && (now - lastVolumeDownTime < 4000));
-
-                            if (isShakeSpike && isComboActive) {
-                                isVolumeComboArmed = false;
+                            if (isShakeSpike) {
+                                resetSecretComboState();
                                 triggerSecretMenu("Shake + Volume Up & Down Combo");
                             }
                         }
@@ -1181,11 +1213,15 @@ public class MainActivity extends Activity {
 
     private synchronized void triggerSecretMenu(String source) {
         long now = SystemClock.uptimeMillis();
-        if (now - lastSecretPromptTime < 2000) return;
+        if (activeSecurityDialog != null && activeSecurityDialog.isShowing()) return;
+        if (now - lastSecretPromptTime < 2500) return;
+        if (now - lastSecurityDismissTime < 2500) return;
         lastSecretPromptTime = now;
+        resetSecretComboState();
 
         // Vibrate for physical feedback so user knows trigger succeeded
         try {
+            lastVibrateEndTime = now + 80;
             Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
             if (v != null && v.hasVibrator()) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1207,16 +1243,18 @@ public class MainActivity extends Activity {
 
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             if (action == KeyEvent.ACTION_DOWN) {
-                if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-                    isVolumeUpPressed = true;
-                    lastVolumeUpTime = now;
-                    vibrateTick(20);
-                } else {
-                    isVolumeDownPressed = true;
-                    lastVolumeDownTime = now;
-                    vibrateTick(20);
+                if (event.getRepeatCount() == 0) {
+                    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                        isVolumeUpPressed = true;
+                        lastVolumeUpTime = now;
+                        vibrateTick(20);
+                    } else {
+                        isVolumeDownPressed = true;
+                        lastVolumeDownTime = now;
+                        vibrateTick(20);
+                    }
+                    checkVolumeComboArmed(now);
                 }
-                checkVolumeComboArmed(now);
             } else if (action == KeyEvent.ACTION_UP) {
                 if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
                     isVolumeUpPressed = false;
@@ -1241,18 +1279,6 @@ public class MainActivity extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         lastTouchInteractionTime = SystemClock.uptimeMillis();
-        long now = SystemClock.uptimeMillis();
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-            isVolumeUpPressed = true;
-            lastVolumeUpTime = now;
-            vibrateTick(20);
-            checkVolumeComboArmed(now);
-        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            isVolumeDownPressed = true;
-            lastVolumeDownTime = now;
-            vibrateTick(20);
-            checkVolumeComboArmed(now);
-        }
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 bgPanX = Math.max(-1.0f, bgPanX - 0.12f);
@@ -1377,6 +1403,13 @@ public class MainActivity extends Activity {
                 getContentResolver().unregisterContentObserver(volumeObserver);
             } catch (Throwable ignored) {}
         }
+        if (activeSecurityDialog != null && activeSecurityDialog.isShowing()) {
+            try {
+                activeSecurityDialog.dismiss();
+            } catch (Throwable ignored) {}
+            activeSecurityDialog = null;
+        }
+        resetSecretComboState();
         stopAmbientDrift();
     }
 
@@ -3828,8 +3861,19 @@ public class MainActivity extends Activity {
 
     void showSecretPasswordPrompt() {
         if (isFinishing() || isDestroyed()) return;
+        if (activeSecurityDialog != null && activeSecurityDialog.isShowing()) return;
+
         Dialog dialog = new Dialog(this);
+        activeSecurityDialog = dialog;
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        dialog.setOnDismissListener(d -> {
+            if (activeSecurityDialog == dialog) {
+                activeSecurityDialog = null;
+            }
+            lastSecurityDismissTime = SystemClock.uptimeMillis();
+            resetSecretComboState();
+        });
 
         float d = getResources().getDisplayMetrics().density;
         LinearLayout root = new LinearLayout(this);
@@ -3891,8 +3935,18 @@ public class MainActivity extends Activity {
     }
 
     void showDatabaseInspector() {
+        if (isFinishing() || isDestroyed()) return;
         Dialog dialog = new Dialog(this);
+        activeSecurityDialog = dialog;
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        dialog.setOnDismissListener(d -> {
+            if (activeSecurityDialog == dialog) {
+                activeSecurityDialog = null;
+            }
+            lastSecurityDismissTime = SystemClock.uptimeMillis();
+            resetSecretComboState();
+        });
 
         float d = getResources().getDisplayMetrics().density;
         LinearLayout root = new LinearLayout(this);
