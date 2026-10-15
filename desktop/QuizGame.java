@@ -6044,44 +6044,57 @@ public class QuizGame extends JFrame {
     // ==========================================
     // SECRET DATABASE PASSWORD PROMPT (Desktop)
     // ==========================================
+    private boolean isSecretPromptShowing = false;
+    private long lastSecretPromptDismissTime = 0;
+
     private void showSecretPasswordPrompt() {
-        JPasswordField passwordField = new JPasswordField(16);
-        passwordField.setFont(pixelFont(Font.PLAIN, 15));
-        passwordField.setBackground(new Color(15, 23, 42));
-        passwordField.setForeground(Color.WHITE);
-        passwordField.setCaretColor(GOLD_LIGHT);
-        passwordField.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(GOLD_LIGHT, 1),
-                BorderFactory.createEmptyBorder(6, 10, 6, 10)
-        ));
+        if (isSecretPromptShowing) return;
+        long now = System.currentTimeMillis();
+        if (now - lastSecretPromptDismissTime < 1500) return;
 
-        JPanel panel = new JPanel(new GridLayout(2, 1, 6, 8));
-        panel.setOpaque(false);
-        JLabel label = new JLabel("Enter Developer Authorization Key:");
-        label.setFont(pixelFont(Font.BOLD, 13));
-        panel.add(label);
-        panel.add(passwordField);
+        isSecretPromptShowing = true;
+        try {
+            JPasswordField passwordField = new JPasswordField(16);
+            passwordField.setFont(pixelFont(Font.PLAIN, 15));
+            passwordField.setBackground(new Color(15, 23, 42));
+            passwordField.setForeground(Color.WHITE);
+            passwordField.setCaretColor(GOLD_LIGHT);
+            passwordField.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(GOLD_LIGHT, 1),
+                    BorderFactory.createEmptyBorder(6, 10, 6, 10)
+            ));
 
-        int result = JOptionPane.showConfirmDialog(
-                this,
-                panel,
-                "🔐 Developer Security Authentication",
-                JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE
-        );
+            JPanel panel = new JPanel(new GridLayout(2, 1, 6, 8));
+            panel.setOpaque(false);
+            JLabel label = new JLabel("Enter Developer Authorization Key:");
+            label.setFont(pixelFont(Font.BOLD, 13));
+            panel.add(label);
+            panel.add(passwordField);
 
-        if (result == JOptionPane.OK_OPTION) {
-            String entered = new String(passwordField.getPassword()).trim();
-            if ("GQA-12345".equals(entered)) {
-                showDatabaseInspector();
-            } else {
-                JOptionPane.showMessageDialog(
-                        this,
-                        "Access Denied: Invalid Security Key.",
-                        "Authentication Failed",
-                        JOptionPane.ERROR_MESSAGE
-                );
+            int result = JOptionPane.showConfirmDialog(
+                    this,
+                    panel,
+                    "🔐 Developer Security Authentication",
+                    JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.PLAIN_MESSAGE
+            );
+
+            if (result == JOptionPane.OK_OPTION) {
+                String entered = new String(passwordField.getPassword()).trim();
+                if ("GQA-12345".equals(entered)) {
+                    showDatabaseInspector();
+                } else {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Access Denied: Invalid Security Key.",
+                            "Authentication Failed",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                }
             }
+        } finally {
+            isSecretPromptShowing = false;
+            lastSecretPromptDismissTime = System.currentTimeMillis();
         }
     }
 
